@@ -1,11 +1,28 @@
 # WebMobAI
 
-**Autonomous Web QA Desktop Application** powered by Claude AI + Playwright.
+**Autonomous Web QA Desktop Application** powered by Playwright + Claude AI.
 
-WebMobAI lets Claude autonomously explore, test, and audit any website through a visible browser window. It opens an isolated Chromium browser, navigates pages, fills forms, checks accessibility, measures performance, tests responsive layouts, and generates detailed HTML reports — all driven by AI.
+WebMobAI automatically explores, tests, and audits any website through a visible browser window. Enter a URL, click **Test**, and watch as it opens an isolated Chromium browser, navigates pages, checks accessibility, measures performance, tests responsive layouts, and generates detailed HTML reports.
+
+Works in two modes:
+- **Standalone** — click Test in the desktop app and it runs a full automated audit instantly
+- **AI-Driven** — connect Claude via MCP for deeper, intelligent exploratory testing
 
 ## How It Works
 
+### Standalone Mode (No AI needed)
+```
+WebMobAI Desktop App ──click "Test"──> Auto-Test Runner ──Playwright──> Chromium Browser
+       │                                                                      │
+       └──── Real-time action log, screenshots, report <──────────────────────┘
+```
+
+1. Open WebMobAI, enter a URL, click **Test**
+2. A visible Chromium browser opens and testing begins automatically
+3. The app shows real-time progress: actions, screenshots, accessibility issues, performance metrics
+4. An HTML test report is generated when complete
+
+### AI-Driven Mode (Claude MCP)
 ```
 You (Claude Desktop/Code) ──MCP──> WebMobAI MCP Server ──Playwright──> Chromium Browser
                                         │
@@ -13,23 +30,33 @@ You (Claude Desktop/Code) ──MCP──> WebMobAI MCP Server ──Playwright�
                                   Test Reports, Screenshots, Videos
 ```
 
-1. Claude connects to the WebMobAI MCP server
-2. You ask: *"Test https://example.com"*
-3. Claude autonomously launches a visible browser, explores the site, and runs tests
-4. Screenshots, accessibility audits, performance metrics, and a full HTML report are generated
+1. Connect Claude to the WebMobAI MCP server
+2. Ask: *"Launch the browser, test https://example.com, and generate a report"*
+3. Claude autonomously explores, fills forms, discovers edge cases, and reports findings
 
 ## Features
 
-### Browser Automation (25 MCP Tools)
+### Standalone Auto-Test (one-click)
+- Page load verification
+- Broken image detection
+- Console error monitoring
+- Accessibility audit (alt text, labels, ARIA, landmarks, skip links)
+- Core Web Vitals (LCP, FCP, CLS, TTI, TTFB)
+- Responsive testing at mobile (375px), tablet (768px), desktop (1280px)
+- Internal link exploration (auto-crawls up to 3 pages)
+- HTML test report generation with all findings
+
+### AI-Driven Testing (25 MCP Tools)
 - **Browser Control** — launch, navigate, click, type, scroll, screenshot, viewport resize, close
 - **Page Analysis** — DOM summary, interactive elements, links, console errors, custom JS evaluation
 - **Accessibility Audit** — missing alt text, form labels, ARIA attributes, landmarks, skip links, color contrast
 - **Performance Metrics** — LCP, FCP, CLS, TTI, TTFB, DOM Content Loaded, Load Complete
-- **Responsive Testing** — automated testing at mobile, tablet, desktop breakpoints with screenshots
+- **Responsive Testing** — automated testing at configurable breakpoints with screenshots
 - **Report Generation** — HTML reports with test results, a11y issues, performance scores, screenshots
 
 ### Desktop App (Tauri 2.0)
-- Real-time action log showing Claude's testing progress
+- One-click testing — enter URL, click Test, watch results stream in
+- Real-time action log with status indicators
 - Screenshot gallery with viewport metadata
 - Accessibility issues panel grouped by severity
 - Performance metrics dashboard with Web Vitals ratings
@@ -40,26 +67,29 @@ You (Claude Desktop/Code) ──MCP──> WebMobAI MCP Server ──Playwright�
 ### Isolated Browser
 - Every session uses a fresh Chromium profile (no cookies, cache, extensions)
 - Never touches your real browser profiles or accounts
-- Headed mode — you see the browser window live while Claude tests
+- Headed mode — you see the browser window live during testing
 - Optional video recording of full sessions
 
 ## Quick Start
 
-### Option 1: MCP Server Only (Recommended)
+### Option 1: Desktop App (Easiest)
 
-Install globally via npm:
+1. Download the latest `.dmg` from [Releases](https://github.com/celikgo/webmobai/releases)
+2. Open the `.dmg` and drag WebMobAI to Applications
+3. Launch WebMobAI
+4. Enter a URL (e.g., `https://example.com`) and click **Test**
+5. A Chromium browser opens and testing runs automatically
+6. Watch real-time results in the action log, screenshots, and report panels
+
+### Option 2: MCP Server + Claude (AI-Driven)
+
+Install the MCP server:
 
 ```bash
 npm install -g webmobai-mcp
 ```
 
-Or run directly with npx:
-
-```bash
-npx webmobai-mcp
-```
-
-Then add to your Claude configuration:
+Add to your Claude configuration:
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
@@ -86,14 +116,6 @@ Then add to your Claude configuration:
 ```
 
 Restart Claude and ask: *"Launch the browser, navigate to https://example.com, explore the site, run accessibility and performance audits, and generate a report."*
-
-### Option 2: Desktop App + MCP Server
-
-1. Download the latest `.dmg` from [Releases](https://github.com/celikgo/webmobai/releases)
-2. Open the `.dmg` and drag WebMobAI to Applications
-3. Launch WebMobAI — the dashboard opens
-4. Connect Claude to the MCP server (see above)
-5. Enter a URL in the dashboard and watch Claude test in real-time
 
 ### Option 3: Build from Source
 
