@@ -5,7 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "webmobai-mcp": "dist/index.js"
+    "webmobai-mcp": "dist/index.js",
+    "webmobai-test": "dist/auto-test.js"
   },
   "scripts": {
     "build": "tsc",

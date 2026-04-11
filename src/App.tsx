@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
 import { Sidebar, type SidebarTab } from "@/components/layout/Sidebar";
 import { ActionLog } from "@/components/layout/ActionLog";
@@ -8,7 +8,6 @@ import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { PerformancePanel } from "@/components/PerformancePanel";
 import { ResponsivePanel } from "@/components/ResponsivePanel";
 import { ConfigPanel } from "@/components/ConfigPanel";
-import { useSessionStore } from "@/stores/useSessionStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 
 function SettingsDialog({
@@ -115,8 +114,6 @@ export function App() {
   const [activeTab, setActiveTab] = useState<SidebarTab>("actions");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { theme } = useSettingsStore();
-  const { setMcpServer, setWsConnected, addAction, updateAction } = useSessionStore();
-  const wsRef = useRef<WebSocket | null>(null);
 
   // Apply theme
   useEffect(() => {
@@ -128,48 +125,6 @@ export function App() {
       root.className = theme;
     }
   }, [theme]);
-
-  // WebSocket connection to MCP server for live updates
-  const connectWebSocket = useCallback(() => {
-    const ws = new WebSocket("ws://localhost:3100/ws");
-
-    ws.onopen = () => {
-      setWsConnected(true);
-      setMcpServer({ running: true, port: 3100, pid: null });
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "action") {
-          addAction(msg.data);
-        } else if (msg.type === "action_update") {
-          updateAction(msg.data.id, msg.data);
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    };
-
-    ws.onclose = () => {
-      setWsConnected(false);
-      // Reconnect after 3s
-      setTimeout(connectWebSocket, 3000);
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-
-    wsRef.current = ws;
-  }, [setWsConnected, setMcpServer, addAction, updateAction]);
-
-  useEffect(() => {
-    connectWebSocket();
-    return () => {
-      wsRef.current?.close();
-    };
-  }, [connectWebSocket]);
 
   const ActivePanel = panelComponents[activeTab];
 

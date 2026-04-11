@@ -5,27 +5,35 @@ import {
   Settings,
   Sun,
   Moon,
-  Wifi,
-  WifiOff,
+  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 interface HeaderProps {
   onOpenSettings: () => void;
 }
 
 export function Header({ onOpenSettings }: HeaderProps) {
-  const { status, config, setConfig, setStatus, mcpServer, wsConnected, addAction, reset } =
-    useSessionStore();
+  const {
+    status,
+    config,
+    setConfig,
+    setStatus,
+    addAction,
+    addScreenshot,
+    setReport,
+    reset,
+  } = useSessionStore();
   const { theme, setTheme } = useSettingsStore();
   const [urlInput, setUrlInput] = useState(config.url);
+  const childRef = useRef<{ kill: () => void } | null>(null);
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!urlInput.trim()) return;
     let url = urlInput.trim();
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -36,19 +44,89 @@ export function Header({ onOpenSettings }: HeaderProps) {
     setStatus("starting");
     addAction({
       type: "info",
-      description: `Session started for ${url}`,
-      status: "success",
+      description: `Starting autonomous test for ${url}`,
+      status: "running",
     });
-    addAction({
-      type: "info",
-      description: "Waiting for Claude to begin autonomous testing via MCP...",
-      details: "Connect Claude Desktop or Claude Code to the MCP server to start testing.",
-      status: "pending",
-    });
-    setStatus("running");
+
+    try {
+      // Check if running in Tauri
+      const isTauri = "__TAURI__" in window;
+
+      if (isTauri) {
+        // Use Tauri shell to spawn the auto-test runner
+        const { Command } = await import("@tauri-apps/plugin-shell");
+        const cmd = Command.create("node", [
+          "/Users/celikgo/WebstormProjects/web-run/mcp-server/dist/auto-test.js",
+          url,
+        ]);
+
+        setStatus("running");
+
+        cmd.stdout.on("data", (line: string) => {
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === "action") {
+              addAction(msg.data);
+            } else if (msg.type === "screenshot") {
+              addScreenshot(msg.data);
+            } else if (msg.type === "report") {
+              setReport(msg.data);
+            }
+          } catch {
+            // ignore non-JSON lines
+          }
+        });
+
+        cmd.stderr.on("data", (line: string) => {
+          console.error("[auto-test]", line);
+        });
+
+        cmd.on("error", (err: string) => {
+          addAction({
+            type: "error",
+            description: `Test runner error: ${err}`,
+            status: "error",
+          });
+          setStatus("error");
+        });
+
+        cmd.on("close", (data: { code: number | null }) => {
+          if (data.code === 0 || data.code === null) {
+            setStatus("completed");
+          } else {
+            setStatus("error");
+          }
+          childRef.current = null;
+        });
+
+        const child = await cmd.spawn();
+        childRef.current = child;
+      } else {
+        // Browser dev mode — show instructions
+        setStatus("running");
+        addAction({
+          type: "info",
+          description: "Running in browser dev mode",
+          details:
+            "Auto-test requires the Tauri desktop app. Run 'cargo tauri dev' to use the full app, or connect Claude via MCP.",
+          status: "success",
+        });
+      }
+    } catch (err) {
+      addAction({
+        type: "error",
+        description: `Failed to start test: ${String(err)}`,
+        status: "error",
+      });
+      setStatus("error");
+    }
   };
 
   const handleStop = () => {
+    if (childRef.current) {
+      childRef.current.kill();
+      childRef.current = null;
+    }
     setStatus("completed");
     addAction({
       type: "info",
@@ -68,7 +146,7 @@ export function Header({ onOpenSettings }: HeaderProps) {
       {/* Logo */}
       <div className="flex items-center gap-2 mr-2">
         <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-          <Globe className="w-4 h-4 text-primary-foreground" />
+          <Brain className="w-4 h-4 text-primary-foreground" />
         </div>
         <span className="font-bold text-sm tracking-tight">WebMobAI</span>
       </div>
@@ -101,16 +179,6 @@ export function Header({ onOpenSettings }: HeaderProps) {
 
       {/* Status indicators */}
       <div className="flex items-center gap-2 ml-auto">
-        {/* MCP Server status */}
-        <Badge variant={mcpServer.running ? "success" : "secondary"} className="gap-1">
-          {wsConnected ? (
-            <Wifi className="w-3 h-3" />
-          ) : (
-            <WifiOff className="w-3 h-3" />
-          )}
-          MCP {mcpServer.running ? `ON :${mcpServer.port}` : "OFF"}
-        </Badge>
-
         {/* Session status */}
         {status !== "idle" && (
           <Badge
