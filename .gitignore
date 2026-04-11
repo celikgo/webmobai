@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+mcp-server/node_modules/
+
+# Build output
+dist/
+out-tsc/
+mcp-server/dist/
+
+# Rust / Tauri
+src-tauri/target/
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test artifacts
+test-results/
+screenshots/
+recordings/
+reports/
+
+# Tauri generated schemas
+src-tauri/gen/
+
+# Misc
+*.tsbuildinfo
+.pnp
+.pnp.js

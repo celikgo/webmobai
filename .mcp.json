@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "webmobai": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/Users/celikgo/WebstormProjects/web-run/mcp-server/dist/index.js"]
+    }
+  }
+}

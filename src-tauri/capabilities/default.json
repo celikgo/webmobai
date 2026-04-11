@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/main/crates/tauri-utils/schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for WebMobAI",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-stdin-write",
+    "shell:allow-kill"
+  ]
+}

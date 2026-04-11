@@ -1,0 +1,66 @@
+{
+  "name": "webmobai-mcp",
+  "version": "1.0.0",
+  "description": "WebMobAI MCP Server — Autonomous web QA testing powered by Claude AI + Playwright. Launch a visible browser, explore websites, run accessibility audits, measure performance, and generate test reports.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "webmobai-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
+    "postinstall": "npx playwright install chromium || true"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "playwright",
+    "testing",
+    "qa",
+    "accessibility",
+    "a11y",
+    "web-testing",
+    "automation",
+    "browser",
+    "autonomous",
+    "ai-testing",
+    "visual-regression",
+    "performance",
+    "web-vitals"
+  ],
+  "author": "celikgo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/celikgo/webmobai.git",
+    "directory": "mcp-server"
+  },
+  "homepage": "https://github.com/celikgo/webmobai",
+  "bugs": {
+    "url": "https://github.com/celikgo/webmobai/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "playwright": "^1.52.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.3",
+    "typescript": "~5.7.2"
+  }
+}

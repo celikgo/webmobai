@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3730a3"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="92" fill="url(#bg)"/>
+  <!-- Brain left hemisphere -->
+  <ellipse cx="220" cy="240" rx="100" ry="100" fill="white" opacity="0.92"/>
+  <ellipse cx="200" cy="185" rx="65" ry="65" fill="white" opacity="0.92"/>
+  <ellipse cx="205" cy="320" rx="60" ry="58" fill="white" opacity="0.92"/>
+  <!-- Brain right hemisphere -->
+  <ellipse cx="292" cy="240" rx="100" ry="100" fill="white" opacity="0.92"/>
+  <ellipse cx="312" cy="185" rx="65" ry="65" fill="white" opacity="0.92"/>
+  <ellipse cx="307" cy="320" rx="60" ry="58" fill="white" opacity="0.92"/>
+  <!-- Brain stem -->
+  <rect x="242" y="340" width="28" height="60" rx="14" fill="white" opacity="0.92"/>
+  <!-- Center divide -->
+  <line x1="256" y1="140" x2="256" y2="350" stroke="#4338ca" stroke-width="4" opacity="0.4"/>
+  <!-- Brain folds left -->
+  <path d="M160 225 Q200 210 250 230" fill="none" stroke="#4338ca" stroke-width="3" opacity="0.3"/>
+  <path d="M170 270 Q210 260 250 275" fill="none" stroke="#4338ca" stroke-width="3" opacity="0.3"/>
+  <!-- Brain folds right -->
+  <path d="M262 230 Q310 210 350 225" fill="none" stroke="#4338ca" stroke-width="3" opacity="0.3"/>
+  <path d="M262 275 Q300 260 342 270" fill="none" stroke="#4338ca" stroke-width="3" opacity="0.3"/>
+  <!-- Neural dots -->
+  <circle cx="195" cy="210" r="6" fill="#a5b4fc" opacity="0.8"/>
+  <circle cx="317" cy="210" r="6" fill="#a5b4fc" opacity="0.8"/>
+  <circle cx="225" cy="270" r="5" fill="#a5b4fc" opacity="0.7"/>
+  <circle cx="287" cy="270" r="5" fill="#a5b4fc" opacity="0.7"/>
+  <circle cx="256" cy="195" r="5" fill="#c4b5fd" opacity="0.8"/>
+  <circle cx="180" cy="255" r="4" fill="#a5b4fc" opacity="0.6"/>
+  <circle cx="332" cy="255" r="4" fill="#a5b4fc" opacity="0.6"/>
+  <circle cx="210" cy="310" r="4" fill="#a5b4fc" opacity="0.6"/>
+  <circle cx="302" cy="310" r="4" fill="#a5b4fc" opacity="0.6"/>
+  <!-- Neural connections -->
+  <line x1="195" y1="210" x2="225" y2="270" stroke="#c4b5fd" stroke-width="1.5" opacity="0.4"/>
+  <line x1="317" y1="210" x2="287" y2="270" stroke="#c4b5fd" stroke-width="1.5" opacity="0.4"/>
+  <line x1="225" y1="270" x2="256" y2="195" stroke="#c4b5fd" stroke-width="1.5" opacity="0.4"/>
+  <line x1="287" y1="270" x2="256" y2="195" stroke="#c4b5fd" stroke-width="1.5" opacity="0.4"/>
+  <line x1="180" y1="255" x2="195" y2="210" stroke="#c4b5fd" stroke-width="1.5" opacity="0.3"/>
+  <line x1="332" y1="255" x2="317" y2="210" stroke="#c4b5fd" stroke-width="1.5" opacity="0.3"/>
+</svg>
