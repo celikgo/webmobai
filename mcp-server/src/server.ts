@@ -55,6 +55,10 @@ import {
   getSeoToolDefinitions,
   handleSeoTool,
 } from "./tools/seo-tools.js";
+import {
+  getPwaToolDefinitions,
+  handlePwaTool,
+} from "./tools/pwa-tools.js";
 import { logger } from "./utils/logger.js";
 
 export function createMcpServer(): { server: Server; browserManager: BrowserManager } {
@@ -88,6 +92,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
       ...getPerfToolDefinitions(),
       ...getSecurityToolDefinitions(),
       ...getSeoToolDefinitions(),
+      ...getPwaToolDefinitions(),
     ];
     return { tools };
   });
@@ -109,6 +114,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
     const perfTools = getPerfToolDefinitions().map((t) => t.name);
     const securityTools = getSecurityToolDefinitions().map((t) => t.name);
     const seoTools = getSeoToolDefinitions().map((t) => t.name);
+    const pwaTools = getPwaToolDefinitions().map((t) => t.name);
 
     // History tools don't need a launched browser — they read from
     // ~/.webmobai/history.json — so route them first, ahead of all the
@@ -259,6 +265,20 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
         };
       }
       return handleSeoTool(name, args as Record<string, unknown>, browserManager);
+    }
+
+    if (pwaTools.includes(name)) {
+      if (!browserManager.isLaunched) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Browser is not launched. Call webmobai_launch_browser first.",
+            },
+          ],
+        };
+      }
+      return handlePwaTool(name, args as Record<string, unknown>, browserManager);
     }
 
     return {
