@@ -38,6 +38,9 @@ reports/
 # Tauri generated schemas
 src-tauri/gen/
 
+# Claude Code (user-local only — shared skills are tracked)
+.claude/settings.local.json
+
 # Misc
 *.tsbuildinfo
 .pnp
