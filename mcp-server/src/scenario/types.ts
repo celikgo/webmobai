@@ -84,6 +84,18 @@ export type ScenarioStep =
       status?: number;
       body?: string;
       contentType?: string;
+    }
+  | {
+      type: "visualSnapshot";
+      name: string;
+      baselineDir?: string;
+      selector?: string;
+      fullPage?: boolean;
+      threshold?: number;
+      maxDiffPixels?: number;
+      maxDiffPixelRatio?: number;
+      updateBaseline?: boolean;
+      description?: string;
     };
 
 export interface ScenarioStepResult {

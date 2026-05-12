@@ -1,6 +1,7 @@
 import { BrowserManager } from "../playwright/browser-manager.js";
 import { handleAssertionTool } from "../tools/assertion-tools.js";
 import { handleRouteTool } from "../tools/route-tools.js";
+import { handleVisualTool } from "../tools/visual-tools.js";
 import { logger } from "../utils/logger.js";
 import type {
   Scenario,
@@ -127,6 +128,25 @@ async function executeStep(
         browser,
       );
       return;
+    case "visualSnapshot": {
+      const result = await handleVisualTool(
+        "webmobai_visual_snapshot",
+        {
+          name: step.name,
+          baseline_dir: step.baselineDir,
+          selector: step.selector,
+          full_page: step.fullPage,
+          threshold: step.threshold,
+          max_diff_pixels: step.maxDiffPixels,
+          max_diff_pixel_ratio: step.maxDiffPixelRatio,
+          update_baseline: step.updateBaseline,
+        },
+        browser,
+      );
+      const text = result.content[0]?.text ?? "";
+      if (text.startsWith("FAIL")) throw new Error(text);
+      return;
+    }
     case "assertVisible":
     case "assertHidden":
     case "assertText":
@@ -214,6 +234,8 @@ function stepLabel(step: ScenarioStep): string {
       return `Screenshot${step.description ? ` (${step.description})` : ""}`;
     case "route":
       return `Route ${step.pattern} → ${step.action}`;
+    case "visualSnapshot":
+      return `Visual snapshot "${step.name}"`;
     case "assertVisible":
       return `Assert ${step.selector} visible`;
     case "assertHidden":

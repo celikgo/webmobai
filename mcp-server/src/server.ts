@@ -39,6 +39,10 @@ import {
   getScenarioToolDefinitions,
   handleScenarioTool,
 } from "./tools/scenario-tools.js";
+import {
+  getVisualToolDefinitions,
+  handleVisualTool,
+} from "./tools/visual-tools.js";
 import { logger } from "./utils/logger.js";
 
 export function createMcpServer(): { server: Server; browserManager: BrowserManager } {
@@ -68,6 +72,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
       ...getRouteToolDefinitions(),
       ...getHistoryToolDefinitions(),
       ...getScenarioToolDefinitions(),
+      ...getVisualToolDefinitions(),
     ];
     return { tools };
   });
@@ -85,6 +90,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
     const routeTools = getRouteToolDefinitions().map((t) => t.name);
     const historyTools = getHistoryToolDefinitions().map((t) => t.name);
     const scenarioTools = getScenarioToolDefinitions().map((t) => t.name);
+    const visualTools = getVisualToolDefinitions().map((t) => t.name);
 
     // History tools don't need a launched browser — they read from
     // ~/.webmobai/history.json — so route them first, ahead of all the
@@ -179,6 +185,20 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
         };
       }
       return handleScenarioTool(name, args as Record<string, unknown>, browserManager);
+    }
+
+    if (visualTools.includes(name)) {
+      if (!browserManager.isLaunched) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Browser is not launched. Call webmobai_launch_browser first.",
+            },
+          ],
+        };
+      }
+      return handleVisualTool(name, args as Record<string, unknown>, browserManager);
     }
 
     return {
