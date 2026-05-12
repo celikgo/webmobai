@@ -157,7 +157,7 @@ export async function handleTestingTool(
 ): Promise<{ content: { type: "text"; text: string }[] }> {
   try {
     const page = browserManager.page;
-    const analyzer = new PageAnalyzer(page);
+    const analyzer = new PageAnalyzer(page, browserManager);
 
     switch (name) {
       case "webmobai_get_page_state": {
@@ -203,6 +203,7 @@ export async function handleTestingTool(
       case "webmobai_check_errors": {
         const errors = await analyzer.checkForErrors();
         const consoleErrors = browserManager.getConsoleErrors();
+        const networkErrors = browserManager.getNetworkErrors();
         let result = "# Error Check\n";
 
         if (errors.brokenImages.length > 0) {
@@ -212,12 +213,21 @@ export async function handleTestingTool(
           result += "\n## Images: All loaded correctly";
         }
 
-        if (consoleErrors.length > 0) {
-          const errorOnly = consoleErrors.filter((e) => e.type === "error");
-          result += `\n\n## Console Errors (${errorOnly.length})\n`;
-          result += errorOnly.map((e) => `  [${e.type}] ${e.message}`).join("\n");
+        const consoleErrorOnly = consoleErrors.filter((e) => e.type === "error");
+        if (consoleErrorOnly.length > 0) {
+          result += `\n\n## Console Errors (${consoleErrorOnly.length})\n`;
+          result += consoleErrorOnly.map((e) => `  [${e.type}] ${e.message}`).join("\n");
         } else {
           result += "\n\n## Console: No errors";
+        }
+
+        if (networkErrors.length > 0) {
+          result += `\n\n## Network Errors (${networkErrors.length})\n`;
+          result += networkErrors
+            .map((e) => `  ${e.method} ${e.url} — ${e.failure} (${e.resourceType})`)
+            .join("\n");
+        } else {
+          result += "\n\n## Network: No failed requests";
         }
 
         return text(result);

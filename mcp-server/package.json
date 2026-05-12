@@ -12,6 +12,9 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -60,7 +63,9 @@
   "devDependencies": {
     "@types/node": "^22.13.5",
     "@types/ws": "^8.5.14",
+    "@vitest/coverage-v8": "^4.1.6",
     "tsx": "^4.19.3",
-    "typescript": "~5.7.2"
+    "typescript": "~5.7.2",
+    "vitest": "^4.1.6"
   }
 }

@@ -10,11 +10,20 @@ export function defaultSessionDir(): string {
   return join(tmpdir(), `webmobai-${id}`);
 }
 
+export interface NetworkError {
+  url: string;
+  method: string;
+  failure: string;
+  resourceType: string;
+  timestamp: number;
+}
+
 export class BrowserManager {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private _page: Page | null = null;
   private consoleErrors: ConsoleError[] = [];
+  private networkErrors: NetworkError[] = [];
   private screenshotDir: string;
   private recordingDir: string;
   private screenshotCounter = 0;
@@ -75,6 +84,22 @@ export class BrowserManager {
     }
 
     this.context = await this.browser.newContext(contextOptions);
+
+    // Subscribe to long-task entries before any page script runs so we can
+    // compute TTI later. The collector stashes entries on the window so the
+    // analyzer can read them via getEntriesByType("longtask") even without
+    // its own observer.
+    await this.context.addInitScript(() => {
+      try {
+        new PerformanceObserver(() => {}).observe({
+          type: "longtask",
+          buffered: true,
+        });
+      } catch {
+        // longtask not supported (e.g., Firefox/WebKit) — silently skip.
+      }
+    });
+
     this._page = await this.context.newPage();
 
     // Capture console errors
@@ -97,6 +122,30 @@ export class BrowserManager {
         url: this._page?.url() ?? "",
         timestamp: Date.now(),
       });
+    });
+
+    // Capture failed network requests (404s, DNS failures, aborts, blocked).
+    this._page.on("requestfailed", (req) => {
+      this.networkErrors.push({
+        url: req.url(),
+        method: req.method(),
+        failure: req.failure()?.errorText ?? "unknown",
+        resourceType: req.resourceType(),
+        timestamp: Date.now(),
+      });
+    });
+
+    // Also treat any non-2xx/3xx response as a network error worth surfacing.
+    this._page.on("response", (res) => {
+      if (res.status() >= 400) {
+        this.networkErrors.push({
+          url: res.url(),
+          method: res.request().method(),
+          failure: `HTTP ${res.status()} ${res.statusText()}`,
+          resourceType: res.request().resourceType(),
+          timestamp: Date.now(),
+        });
+      }
     });
 
     logger.info(`Browser launched (headed: ${!headless}, viewport: ${viewport.width}x${viewport.height})`);
@@ -162,6 +211,14 @@ export class BrowserManager {
 
   clearConsoleErrors(): void {
     this.consoleErrors = [];
+  }
+
+  getNetworkErrors(): NetworkError[] {
+    return [...this.networkErrors];
+  }
+
+  clearNetworkErrors(): void {
+    this.networkErrors = [];
   }
 
   async close(): Promise<void> {

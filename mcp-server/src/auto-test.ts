@@ -117,7 +117,7 @@ async function run() {
 
     // 4. Page analysis
     const page = browser.page;
-    const analyzer = new PageAnalyzer(page);
+    const analyzer = new PageAnalyzer(page, browser);
 
     action("explore", "Analyzing page structure...", "running");
     const domSummary = await analyzer.getDomSummary();

@@ -23,6 +23,12 @@ jobs:
       - name: Type check & build
         working-directory: mcp-server
         run: npm run build
+      - name: Install Playwright browser (chromium)
+        working-directory: mcp-server
+        run: npx playwright install --with-deps chromium
+      - name: Run tests
+        working-directory: mcp-server
+        run: npm test
 
   check-frontend:
     name: Frontend (React + TypeScript)

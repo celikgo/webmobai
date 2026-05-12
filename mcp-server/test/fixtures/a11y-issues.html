@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Page with a11y issues</title>
+<style>
+  .small-print { font-size: 10px; }
+</style>
+</head>
+<body>
+  <header>
+    <a href="https://example.com">Home</a>
+  </header>
+
+  <!-- Issues this fixture deliberately contains:
+       - <html> has no lang attribute
+       - <img> missing alt
+       - <input> with no label, no aria-label, no title
+       - <button> with no accessible name (icon-only)
+       - No <main> landmark
+       - No skip-to-content link
+       - One paragraph with very small text
+  -->
+
+  <img src="hero.jpg">
+
+  <form>
+    <input type="text" name="email">
+    <button type="submit">
+      <svg width="16" height="16"><circle cx="8" cy="8" r="4"/></svg>
+    </button>
+  </form>
+
+  <p class="small-print">Fine print that's almost unreadable.</p>
+</body>
+</html>

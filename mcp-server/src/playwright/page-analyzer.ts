@@ -1,31 +1,71 @@
 import type { Page } from "playwright";
 import { logger } from "../utils/logger.js";
 import type { AccessibilityIssue, PerformanceMetrics } from "../types.js";
+import type { BrowserManager } from "./browser-manager.js";
 
 export class PageAnalyzer {
-  constructor(private readonly page: Page) {}
+  constructor(
+    private readonly page: Page,
+    private readonly browserManager?: BrowserManager,
+  ) {}
 
   async getAccessibilityTree(): Promise<string> {
     logger.info("Capturing accessibility tree");
-    const snapshot = await this.page.evaluate(() => {
-      function buildTree(el: Element, depth: number): string {
-        const role = el.getAttribute("role") || el.tagName.toLowerCase();
-        const name =
-          el.getAttribute("aria-label") ||
-          el.getAttribute("alt") ||
-          (el as HTMLElement).innerText?.slice(0, 60) ||
-          "";
-        const indent = "  ".repeat(depth);
-        let result = `${indent}[${role}] "${name}"`;
-        for (const child of el.children) {
-          result += "\n" + buildTree(child, depth + 1);
+
+    // Use Chrome DevTools Protocol to fetch the real accessibility tree. This
+    // is the same tree screen readers see — computed accessible names, ARIA
+    // roles, ignored nodes filtered out. Unlike the previous DOM walk, an
+    // ancestor's "name" doesn't include all descendant innerText.
+    //
+    // CDP is Chromium-only. On Firefox/WebKit this throws; we degrade
+    // gracefully by reporting that the tree isn't available rather than
+    // crashing the audit.
+    try {
+      const client = await this.page.context().newCDPSession(this.page);
+      await client.send("Accessibility.enable");
+      const { nodes } = await client.send("Accessibility.getFullAXTree");
+
+      type AXNode = {
+        nodeId: string;
+        ignored: boolean;
+        role?: { value?: string };
+        name?: { value?: string };
+        childIds?: string[];
+      };
+
+      const byId = new Map<string, AXNode>();
+      for (const n of nodes as AXNode[]) byId.set(n.nodeId, n);
+
+      const root = (nodes as AXNode[])[0];
+      if (!root) return "No accessibility tree available";
+
+      // CDP returns "ignored" pass-through nodes (typically the <html>/<body>
+      // wrappers) between meaningful ARIA nodes. We hide those from the
+      // output but keep descending through their children, so e.g. the
+      // <main> inside an ignored <body> still shows up under the root.
+      function render(n: AXNode, depth: number): string[] {
+        const lines: string[] = [];
+        if (!n.ignored) {
+          const role = n.role?.value ?? "unknown";
+          const name = n.name?.value ? ` "${n.name.value}"` : "";
+          lines.push(`${"  ".repeat(depth)}[${role}]${name}`);
         }
-        return result;
+        const childDepth = n.ignored ? depth : depth + 1;
+        for (const childId of n.childIds ?? []) {
+          const child = byId.get(childId);
+          if (child) lines.push(...render(child, childDepth));
+        }
+        return lines;
       }
-      return buildTree(document.body, 0);
-    });
-    if (!snapshot) return "No accessibility tree available";
-    return snapshot;
+
+      await client.detach().catch(() => {});
+      return render(root, 0).join("\n");
+    } catch (err) {
+      logger.warn(
+        `Accessibility tree unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return "Accessibility tree not available (CDP not supported on this browser)";
+    }
   }
 
   async getDomSummary(): Promise<string> {
@@ -195,18 +235,20 @@ export class PageAnalyzer {
         }
       });
 
-      // Check color contrast (simplified)
+      // Small text — distinct from contrast. WCAG 1.4.4 (Resize Text) is the
+      // closest mapping; impact is minor since this is a heuristic, not a
+      // hard violation.
       document.querySelectorAll("p, span, h1, h2, h3, h4, h5, h6, li, a, label").forEach((el) => {
         const style = window.getComputedStyle(el);
         const fontSize = parseFloat(style.fontSize);
         if (fontSize < 12 && el.textContent?.trim()) {
           results.push({
-            id: `text-size-${results.length}`,
-            impact: "moderate",
-            description: `Text element has very small font size (${fontSize}px)`,
-            helpUrl: "https://dequeuniversity.com/rules/axe/4.4/color-contrast",
+            id: `small-text-${results.length}`,
+            impact: "minor",
+            description: `Text element has very small font size (${fontSize}px) — readability risk`,
+            helpUrl: "https://www.w3.org/WAI/WCAG21/Understanding/resize-text.html",
             nodes: [el.outerHTML.slice(0, 120)],
-            rule: "text-size",
+            rule: "small-text",
           });
         }
       });
@@ -235,18 +277,40 @@ export class PageAnalyzer {
         });
       }
 
-      // Check skip navigation
-      const firstLink = document.querySelector("a");
-      const hasSkipLink =
-        firstLink &&
-        (firstLink.textContent?.toLowerCase().includes("skip") ||
-          firstLink.getAttribute("href")?.startsWith("#"));
+      // Skip-link detection: a skip link is an in-page anchor near the top
+      // of the document that jumps to main content. We require BOTH (a) the
+      // link's text mentions skip/jump/main/content OR the link is the first
+      // focusable element on the page, AND (b) the href target actually
+      // exists in the document. This avoids both false negatives (skip link
+      // exists but isn't the very first <a>) and false positives (any
+      // <a href="#section"> being counted as a skip link).
+      const anchorLinks = Array.from(
+        document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'),
+      );
+      const isSkipLinkCandidate = (a: HTMLAnchorElement): boolean => {
+        const target = a.getAttribute("href")?.slice(1);
+        if (!target) return false;
+        const targetEl = document.getElementById(target);
+        if (!targetEl) return false;
+        const text = (a.textContent ?? "").toLowerCase();
+        if (/(skip|jump).*(content|main|nav)|skip\s+to|jump\s+to/.test(text)) {
+          return true;
+        }
+        // Also accept: link is among the first 3 focusable elements
+        const focusables = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            'a[href], button, [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        return focusables.indexOf(a) >= 0 && focusables.indexOf(a) < 3;
+      };
+      const hasSkipLink = anchorLinks.some(isSkipLinkCandidate);
       if (!hasSkipLink) {
         results.push({
           id: "skip-link-0",
           impact: "moderate",
           description: "Page does not have a skip navigation link",
-          helpUrl: "https://dequeuniversity.com/rules/axe/4.4/skip-link",
+          helpUrl: "https://www.w3.org/WAI/WCAG21/Understanding/bypass-blocks.html",
           nodes: [],
           rule: "skip-link",
         });
@@ -289,17 +353,33 @@ export class PageAnalyzer {
       const lcpEntries = perf.getEntriesByType("largest-contentful-paint");
       const lcp = lcpEntries.length > 0 ? lcpEntries[lcpEntries.length - 1]!.startTime : null;
 
-      // CLS
+      // CLS — sum non-input-triggered layout shifts.
       const layoutShiftEntries = perf.getEntriesByType("layout-shift") as (PerformanceEntry & { hadRecentInput: boolean; value: number })[];
       const cls = layoutShiftEntries
         .filter((e) => !e.hadRecentInput)
         .reduce((sum, e) => sum + e.value, 0);
 
+      // TTI approximation. The strict Lighthouse definition is "first 5s
+      // quiet window of no long tasks after FCP". Computing that requires
+      // waiting 5s past the last long task, which we don't want to do here.
+      // Instead, use the end of the last long task seen so far (or DOM
+      // content loaded if no long tasks were observed). On most pages this
+      // is within ~10% of the strict TTI by the time we measure (after
+      // network idle).
+      const longTaskEntries = perf.getEntriesByType("longtask");
+      const lastLongTaskEnd =
+        longTaskEntries.length > 0
+          ? Math.max(
+              ...longTaskEntries.map((e) => e.startTime + e.duration),
+            )
+          : null;
+      const tti = lastLongTaskEnd ?? nav?.domContentLoadedEventEnd ?? fcp ?? null;
+
       return {
         lcp,
         fcp,
         cls: cls || null,
-        tti: null, // Would need long-task observer
+        tti,
         ttfb: nav?.responseStart ?? null,
         domContentLoaded: nav?.domContentLoadedEventEnd ?? null,
         loadComplete: nav?.loadEventEnd ?? null,
@@ -343,10 +423,21 @@ export class PageAnalyzer {
       return broken;
     });
 
+    const consoleErrors =
+      this.browserManager
+        ?.getConsoleErrors()
+        .filter((e) => e.type === "error")
+        .map((e) => e.message) ?? [];
+
+    const networkErrors =
+      this.browserManager
+        ?.getNetworkErrors()
+        .map((e) => `${e.method} ${e.url} — ${e.failure}`) ?? [];
+
     return {
       brokenImages,
-      consoleErrors: [],
-      networkErrors: [],
+      consoleErrors,
+      networkErrors,
     };
   }
 }

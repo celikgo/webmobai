@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Clean accessible page</title>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header>
+    <nav aria-label="Primary">
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+    </nav>
+  </header>
+
+  <main id="main-content">
+    <h1>Welcome</h1>
+    <p>This page passes basic accessibility heuristics.</p>
+
+    <img src="cat.jpg" alt="A cat sleeping in a sunbeam">
+
+    <form>
+      <label for="email">Email</label>
+      <input id="email" type="email" name="email">
+
+      <button type="submit" aria-label="Submit form">
+        <svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="4"/></svg>
+        Submit
+      </button>
+    </form>
+  </main>
+
+  <footer>
+    <p>&copy; 2026</p>
+  </footer>
+</body>
+</html>

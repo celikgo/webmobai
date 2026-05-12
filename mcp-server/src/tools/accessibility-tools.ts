@@ -32,7 +32,7 @@ export async function handleAccessibilityTool(
 ): Promise<{ content: { type: "text"; text: string }[] }> {
   try {
     const page = browserManager.page;
-    const analyzer = new PageAnalyzer(page);
+    const analyzer = new PageAnalyzer(page, browserManager);
 
     switch (name) {
       case "webmobai_accessibility_audit": {

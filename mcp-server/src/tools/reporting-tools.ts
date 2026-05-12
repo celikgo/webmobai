@@ -113,7 +113,7 @@ export async function handleReportingTool(
 ): Promise<{ content: { type: "text"; text: string }[] }> {
   try {
     const page = browserManager.page;
-    const analyzer = new PageAnalyzer(page);
+    const analyzer = new PageAnalyzer(page, browserManager);
 
     switch (name) {
       case "webmobai_get_performance_metrics": {
