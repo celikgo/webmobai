@@ -47,6 +47,10 @@ import {
   getPerfToolDefinitions,
   handlePerfTool,
 } from "./tools/perf-tools.js";
+import {
+  getSecurityToolDefinitions,
+  handleSecurityTool,
+} from "./tools/security-tools.js";
 import { logger } from "./utils/logger.js";
 
 export function createMcpServer(): { server: Server; browserManager: BrowserManager } {
@@ -78,6 +82,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
       ...getScenarioToolDefinitions(),
       ...getVisualToolDefinitions(),
       ...getPerfToolDefinitions(),
+      ...getSecurityToolDefinitions(),
     ];
     return { tools };
   });
@@ -97,6 +102,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
     const scenarioTools = getScenarioToolDefinitions().map((t) => t.name);
     const visualTools = getVisualToolDefinitions().map((t) => t.name);
     const perfTools = getPerfToolDefinitions().map((t) => t.name);
+    const securityTools = getSecurityToolDefinitions().map((t) => t.name);
 
     // History tools don't need a launched browser — they read from
     // ~/.webmobai/history.json — so route them first, ahead of all the
@@ -219,6 +225,20 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
         };
       }
       return handlePerfTool(name, args as Record<string, unknown>, browserManager);
+    }
+
+    if (securityTools.includes(name)) {
+      if (!browserManager.isLaunched) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Browser is not launched. Call webmobai_launch_browser first.",
+            },
+          ],
+        };
+      }
+      return handleSecurityTool(name, args as Record<string, unknown>, browserManager);
     }
 
     return {
