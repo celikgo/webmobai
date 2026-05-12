@@ -1,6 +1,7 @@
 import type { BrowserManager } from "../playwright/browser-manager.js";
 import { PageAnalyzer } from "../playwright/page-analyzer.js";
 import { generateHtmlReport } from "../utils/report-generator.js";
+import { generateJunitReport } from "../utils/junit-generator.js";
 import { logger } from "../utils/logger.js";
 import type { TestReportData, TestResult } from "../types.js";
 
@@ -91,13 +92,19 @@ export function getReportingToolDefinitions() {
     {
       name: "webmobai_generate_report",
       description:
-        "Generate the final HTML test report with all collected test results, accessibility issues, performance metrics, and screenshots. Call this when you've finished testing.",
+        "Generate the final HTML test report with all collected test results, accessibility issues, performance metrics, and screenshots. Also emits a JUnit XML alongside the HTML for native CI integration. Call this when you've finished testing.",
       inputSchema: {
         type: "object" as const,
         properties: {
           url: {
             type: "string",
             description: "The main URL that was tested",
+          },
+          junit: {
+            type: "boolean",
+            description:
+              "Also produce a JUnit XML report next to the HTML one (default true). Set false if you only want HTML.",
+            default: true,
           },
         },
         required: ["url"],
@@ -224,10 +231,22 @@ export async function handleReportingTool(
           pagesExplored: Array.from(sessionData.pagesExplored),
         };
 
-        const reportPath = await generateHtmlReport(reportData, process.cwd());
+        // Write artifacts into the browser's session dir so they sit next
+        // to the screenshots, recordings, and trace.zip. Previously this
+        // used process.cwd(), which is unpredictable for Claude Desktop /
+        // Claude Code spawn contexts.
+        const outDir = browserManager.sessionDir;
+        const reportPath = await generateHtmlReport(reportData, outDir);
+        const junit = (args.junit as boolean | undefined) ?? true;
+        const junitPath = junit
+          ? await generateJunitReport(reportData, outDir)
+          : null;
 
         let summary = `# Test Report Generated\n\n`;
-        summary += `Report saved to: ${reportPath}\n\n`;
+        summary += `HTML report: ${reportPath}\n`;
+        if (junitPath) summary += `JUnit XML: ${junitPath}\n`;
+        summary += `Playwright trace: ${browserManager.traceFilePath}\n`;
+        summary += `(Open trace at https://trace.playwright.dev)\n\n`;
         summary += `## Summary\n`;
         summary += `- Total tests: ${reportData.summary.totalTests}\n`;
         summary += `- Passed: ${passed}\n`;

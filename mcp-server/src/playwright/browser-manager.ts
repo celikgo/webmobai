@@ -43,11 +43,26 @@ export class BrowserManager {
   private networkErrors: NetworkError[] = [];
   private screenshotDir: string;
   private recordingDir: string;
+  private tracePath: string;
+  private traceEnabled = false;
   private screenshotCounter = 0;
+  readonly sessionDir: string;
 
   constructor(baseDir: string = defaultSessionDir()) {
+    this.sessionDir = baseDir;
     this.screenshotDir = join(baseDir, "screenshots");
     this.recordingDir = join(baseDir, "recordings");
+    this.tracePath = join(baseDir, "trace.zip");
+  }
+
+  /**
+   * Absolute path where the Playwright trace will be saved on close.
+   * Drop it into https://trace.playwright.dev to time-travel through the
+   * session: DOM snapshots per action, network log, console log, source
+   * locations.
+   */
+  get traceFilePath(): string {
+    return this.tracePath;
   }
 
   get page(): Page {
@@ -153,6 +168,23 @@ export class BrowserManager {
     }
 
     this.context = await this.browser.newContext(contextOptions);
+
+    // Start Playwright tracing. Captures DOM snapshots before/after each
+    // action, network log, console log, and Playwright source locations.
+    // The trace is saved on close() and can be opened at
+    // https://trace.playwright.dev for time-travel debugging.
+    try {
+      await this.context.tracing.start({
+        screenshots: true,
+        snapshots: true,
+        sources: true,
+      });
+      this.traceEnabled = true;
+    } catch (err) {
+      logger.warn(
+        `Tracing failed to start: ${err instanceof Error ? err.message : String(err)}. Continuing without trace.`,
+      );
+    }
 
     // Subscribe to long-task entries before any page script runs so we can
     // compute TTI later. The collector stashes entries on the window so the
@@ -300,6 +332,21 @@ export class BrowserManager {
     // signatures).
     const { resetRoutes } = await import("../tools/route-tools.js");
     resetRoutes();
+
+    // Stop tracing before closing the context, otherwise the in-flight
+    // trace is discarded.
+    if (this.context && this.traceEnabled) {
+      try {
+        await this.context.tracing.stop({ path: this.tracePath });
+        logger.info(`Trace saved: ${this.tracePath}`);
+      } catch (err) {
+        logger.warn(
+          `Failed to save trace: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      this.traceEnabled = false;
+    }
+
     if (this.context) {
       await this.context.close();
     }

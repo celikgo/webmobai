@@ -247,10 +247,15 @@ export async function handleBrowserTool(
 
       case "webmobai_close_browser": {
         const videoPath = await browserManager.getVideoPath();
+        const tracePath = browserManager.traceFilePath;
         await browserManager.close();
-        return text(
-          `Browser closed.${videoPath ? `\nRecorded video saved: ${videoPath}` : ""}`,
+        const lines = ["Browser closed."];
+        if (videoPath) lines.push(`Recorded video saved: ${videoPath}`);
+        lines.push(`Playwright trace: ${tracePath}`);
+        lines.push(
+          "Open the trace at https://trace.playwright.dev for time-travel debugging.",
         );
+        return text(lines.join("\n"));
       }
 
       default:

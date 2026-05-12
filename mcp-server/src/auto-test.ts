@@ -15,6 +15,7 @@ import { chromium } from "playwright";
 import { BrowserManager, defaultSessionDir } from "./playwright/browser-manager.js";
 import { PageAnalyzer } from "./playwright/page-analyzer.js";
 import { generateHtmlReport } from "./utils/report-generator.js";
+import { generateJunitReport } from "./utils/junit-generator.js";
 import type { TestReportData, TestResult, AccessibilityIssue } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -423,7 +424,15 @@ async function run() {
     };
 
     const reportPath = await generateHtmlReport(reportData, sessionDir);
-    action("report", `Report generated: ${reportPath}`, "success");
+    action("report", `HTML report generated: ${reportPath}`, "success");
+
+    const junitPath = await generateJunitReport(reportData, sessionDir);
+    action(
+      "report",
+      `JUnit XML report generated: ${junitPath}`,
+      "success",
+      "Drop into your CI for native test-result display.",
+    );
 
     // Emit full report for the frontend
     emit("report", reportData as unknown as Record<string, unknown>);
@@ -436,9 +445,16 @@ async function run() {
       failed > 0 ? "error" : "success",
     );
 
-    // Keep browser open for 5s so user can see final state
+    // Keep browser open for 5s so user can see final state, then close.
+    // close() saves the Playwright trace (~/sessionDir/trace.zip).
     await page.waitForTimeout(3000);
     await browser.close();
+    action(
+      "info",
+      `Playwright trace saved: ${browser.traceFilePath}`,
+      "success",
+      "Drop into https://trace.playwright.dev for time-travel debugging.",
+    );
   } catch (err) {
     action("error", `Fatal error: ${String(err)}`, "error");
     try {
