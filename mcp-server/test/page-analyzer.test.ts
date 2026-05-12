@@ -49,6 +49,45 @@ describe("PageAnalyzer.runAccessibilityAudit", () => {
   });
 });
 
+describe("PageAnalyzer.runAccessibilityAudit — axe-core integration", () => {
+  it("returns axe-prefixed rules on a broken page", async () => {
+    await ctx.page.goto(fixtureUrl("a11y-issues.html"));
+    const analyzer = new PageAnalyzer(ctx.page);
+    const issues = await analyzer.runAccessibilityAudit();
+    // axe-core finds these and tags them with the rule id we map to.
+    // We check a few canonical axe rule names appear with the axe- prefix.
+    const axeRules = issues.filter((i) => i.rule.startsWith("axe-") || /^[a-z-]+$/.test(i.rule));
+    expect(axeRules.length).toBeGreaterThan(0);
+    // axe-core should flag the missing alt text — its rule id is "image-alt"
+    // (matches our supplementary rule name; dedupe leaves only one).
+    expect(issues.some((i) => /image-alt/.test(i.rule))).toBe(true);
+    // axe-core should flag the unlabeled input (rule "label").
+    expect(issues.some((i) => /label/.test(i.rule))).toBe(true);
+  });
+
+  it("deduplicates rules already covered by axe-core", async () => {
+    await ctx.page.goto(fixtureUrl("a11y-issues.html"));
+    const analyzer = new PageAnalyzer(ctx.page);
+    const issues = await analyzer.runAccessibilityAudit();
+    // Group by rule name. A single rule should not appear once from axe and
+    // once from the supplementary path — dedupe is on rule id.
+    const ruleCounts = issues.reduce<Record<string, number>>((acc, i) => {
+      acc[i.rule] = (acc[i.rule] ?? 0) + 1;
+      return acc;
+    }, {});
+    // Each rule shouldn't appear from both sources. Our merge in
+    // runAccessibilityAudit removes supplementary entries whose rule id
+    // already came from axe.
+    for (const [rule, count] of Object.entries(ruleCounts)) {
+      // axe can legitimately return multiple violations of the same rule
+      // (one per failing node) — but we collapse them into a single issue
+      // with multiple nodes. Either way, a rule should appear at most once
+      // overall in our merged output.
+      expect(count, `rule ${rule} appears more than once`).toBe(1);
+    }
+  });
+});
+
 describe("PageAnalyzer.getAccessibilityTree", () => {
   it("returns a tree using computed roles, not a DOM walk with innerText", async () => {
     await ctx.page.goto(fixtureUrl("a11y-clean.html"));

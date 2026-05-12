@@ -55,7 +55,9 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "axe-core": "^4.11.4",
     "playwright": "^1.52.0",
     "ws": "^8.18.0",
     "zod": "^3.24.2"

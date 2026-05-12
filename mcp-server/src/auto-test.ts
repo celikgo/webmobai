@@ -21,9 +21,13 @@ const execFileAsync = promisify(execFile);
 
 const url = process.argv[2];
 if (!url) {
-  console.error("Usage: auto-test <url>");
+  console.error("Usage: auto-test <url> [config-json]");
   process.exit(1);
 }
+
+import { parseRunConfig } from "./run-config.js";
+
+const config = parseRunConfig(process.argv[3]);
 
 function emit(type: string, data: Record<string, unknown>) {
   process.stdout.write(JSON.stringify({ type, data }) + "\n");
@@ -85,16 +89,66 @@ async function run() {
     // 0. Ensure Chromium is downloaded (first-run only).
     await ensureChromiumInstalled();
 
-    // 1. Launch browser
+    // 1. Launch browser using SessionConfig from the desktop app.
     action("info", "Launching isolated Chromium browser...", "running");
-    await browser.launch({ headless: false, recordVideo: true });
-    action("info", "Browser launched in visible mode", "success");
+    await browser.launch({
+      headless: false,
+      viewport: config.viewport,
+      recordVideo: config.enableVideo,
+    });
+    action(
+      "info",
+      `Browser launched (${config.viewport.width}x${config.viewport.height}, video ${config.enableVideo ? "on" : "off"})`,
+      "success",
+    );
 
     // 2. Navigate
     action("navigate", `Navigating to ${url}`, "running");
     const navResult = await browser.navigate(url);
     pagesExplored.push(navResult.url);
     action("navigate", `Loaded: "${navResult.title}"`, "success", navResult.url);
+
+    // 2b. Auto-login if credentials were provided. This is a best-effort
+    // heuristic: locate an email/username + password input on the landing
+    // page, fill them, and submit. Apps with login on a separate page need
+    // their own /login URL passed as the target.
+    if (config.credentials?.username && config.credentials?.password) {
+      try {
+        action("info", "Attempting auto-login with provided credentials...", "running");
+        const userSelector = await browser.page.evaluate(() => {
+          const candidates = document.querySelectorAll<HTMLInputElement>(
+            'input[type="email"], input[type="text"][name*="email" i], input[name*="user" i], input[id*="user" i]',
+          );
+          return candidates[0]?.outerHTML.slice(0, 80) ? "" : null;
+        });
+        const userInput = await browser.page.$(
+          'input[type="email"], input[type="text"][name*="email" i], input[name*="user" i], input[id*="user" i]',
+        );
+        const passInput = await browser.page.$('input[type="password"]');
+        if (userInput && passInput) {
+          await userInput.fill(config.credentials.username);
+          await passInput.fill(config.credentials.password);
+          await browser.page.keyboard.press("Enter");
+          await browser.page
+            .waitForLoadState("networkidle", { timeout: 10_000 })
+            .catch(() => {});
+          action("info", "Auto-login attempted", "success");
+        } else {
+          action(
+            "info",
+            "No login form found on landing page — skipping auto-login",
+            "success",
+            userSelector ?? undefined,
+          );
+        }
+      } catch (err) {
+        action(
+          "error",
+          `Auto-login failed: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+      }
+    }
 
     results.push({
       url: navResult.url,
@@ -112,7 +166,7 @@ async function run() {
       url: ssPath,
       path: ssPath,
       description: "Initial page load",
-      viewport: { width: 1280, height: 720 },
+      viewport: config.viewport,
     });
 
     // 4. Page analysis
@@ -175,62 +229,67 @@ async function run() {
       });
     }
 
-    // 6. Accessibility audit
-    action("accessibility", "Running accessibility audit...", "running");
-    a11yIssues = await analyzer.runAccessibilityAudit();
-    const critical = a11yIssues.filter((i) => i.impact === "critical" || i.impact === "serious");
-    if (a11yIssues.length === 0) {
-      action("accessibility", "No accessibility issues found", "success");
-      results.push({
-        url: navResult.url,
-        title: "Accessibility audit",
-        status: "pass",
-        category: "Accessibility",
-        description: "No accessibility issues detected",
-      });
+    // 6. Accessibility audit (gated by config.enableA11y).
+    if (config.enableA11y) {
+      action("accessibility", "Running accessibility audit...", "running");
+      a11yIssues = await analyzer.runAccessibilityAudit();
+      const critical = a11yIssues.filter((i) => i.impact === "critical" || i.impact === "serious");
+      if (a11yIssues.length === 0) {
+        action("accessibility", "No accessibility issues found", "success");
+        results.push({
+          url: navResult.url,
+          title: "Accessibility audit",
+          status: "pass",
+          category: "Accessibility",
+          description: "No accessibility issues detected",
+        });
+      } else {
+        action(
+          "accessibility",
+          `Found ${a11yIssues.length} accessibility issues (${critical.length} critical/serious)`,
+          critical.length > 0 ? "error" : "success",
+        );
+        results.push({
+          url: navResult.url,
+          title: "Accessibility audit",
+          status: critical.length > 0 ? "fail" : "warning",
+          category: "Accessibility",
+          description: `${a11yIssues.length} issues: ${critical.length} critical/serious`,
+          details: a11yIssues
+            .slice(0, 5)
+            .map((i) => `[${i.impact}] ${i.rule}: ${i.description}`)
+            .join("; "),
+        });
+      }
     } else {
+      action("info", "Accessibility audit skipped (disabled in config)", "success");
+    }
+
+    // 7. Performance metrics (gated by config.enablePerformance).
+    let perfMetrics: Awaited<ReturnType<typeof analyzer.getPerformanceMetrics>> | undefined;
+    if (config.enablePerformance) {
+      action("performance", "Collecting performance metrics...", "running");
+      perfMetrics = await analyzer.getPerformanceMetrics();
+      const lcpGood = perfMetrics.lcp != null && perfMetrics.lcp <= 2500;
+      const clsGood = perfMetrics.cls != null && perfMetrics.cls <= 0.1;
       action(
-        "accessibility",
-        `Found ${a11yIssues.length} accessibility issues (${critical.length} critical/serious)`,
-        critical.length > 0 ? "error" : "success",
+        "performance",
+        `LCP: ${perfMetrics.lcp != null ? Math.round(perfMetrics.lcp) + "ms" : "N/A"}, CLS: ${perfMetrics.cls != null ? perfMetrics.cls.toFixed(3) : "N/A"}`,
+        lcpGood && clsGood ? "success" : "error",
       );
       results.push({
         url: navResult.url,
-        title: "Accessibility audit",
-        status: critical.length > 0 ? "fail" : "warning",
-        category: "Accessibility",
-        description: `${a11yIssues.length} issues: ${critical.length} critical/serious`,
-        details: a11yIssues
-          .slice(0, 5)
-          .map((i) => `[${i.impact}] ${i.rule}: ${i.description}`)
-          .join("; "),
+        title: "Core Web Vitals",
+        status: lcpGood && clsGood ? "pass" : "warning",
+        category: "Performance",
+        description: `LCP: ${perfMetrics.lcp != null ? Math.round(perfMetrics.lcp) + "ms" : "N/A"}, FCP: ${perfMetrics.fcp != null ? Math.round(perfMetrics.fcp) + "ms" : "N/A"}, CLS: ${perfMetrics.cls != null ? perfMetrics.cls.toFixed(3) : "N/A"}`,
       });
+    } else {
+      action("info", "Performance metrics skipped (disabled in config)", "success");
     }
 
-    // 7. Performance metrics
-    action("performance", "Collecting performance metrics...", "running");
-    const perfMetrics = await analyzer.getPerformanceMetrics();
-    const lcpGood = perfMetrics.lcp != null && perfMetrics.lcp <= 2500;
-    const clsGood = perfMetrics.cls != null && perfMetrics.cls <= 0.1;
-    action(
-      "performance",
-      `LCP: ${perfMetrics.lcp != null ? Math.round(perfMetrics.lcp) + "ms" : "N/A"}, CLS: ${perfMetrics.cls != null ? perfMetrics.cls.toFixed(3) : "N/A"}`,
-      lcpGood && clsGood ? "success" : "error",
-    );
-    results.push({
-      url: navResult.url,
-      title: "Core Web Vitals",
-      status: lcpGood && clsGood ? "pass" : "warning",
-      category: "Performance",
-      description: `LCP: ${perfMetrics.lcp != null ? Math.round(perfMetrics.lcp) + "ms" : "N/A"}, FCP: ${perfMetrics.fcp != null ? Math.round(perfMetrics.fcp) + "ms" : "N/A"}, CLS: ${perfMetrics.cls != null ? perfMetrics.cls.toFixed(3) : "N/A"}`,
-    });
-
-    // 8. Responsive testing
-    const breakpoints = [
-      { name: "Mobile", width: 375, height: 812 },
-      { name: "Tablet", width: 768, height: 1024 },
-      { name: "Desktop", width: 1280, height: 720 },
-    ];
+    // 8. Responsive testing — use breakpoints from the desktop app's config.
+    const breakpoints = config.responsiveBreakpoints;
 
     for (const bp of breakpoints) {
       action("responsive", `Testing ${bp.name} (${bp.width}x${bp.height})...`, "running");
@@ -266,18 +325,25 @@ async function run() {
       });
     }
 
-    // Reset viewport
-    await browser.setViewport(1280, 720);
+    // Reset viewport back to the user's configured default.
+    await browser.setViewport(config.viewport.width, config.viewport.height);
 
-    // 9. Explore internal links
+    // 9. Explore internal links — cap at config.maxPages (minus the
+    // homepage we already visited).
     action("explore", "Discovering internal links...", "running");
     const links = await analyzer.getLinks();
     const origin = new URL(navResult.url).origin;
-    const internalLinks = links.filter((l) => l.startsWith(origin)).slice(0, 5);
-    action("explore", `Found ${links.length} links (${internalLinks.length} internal to test)`, "success");
+    const additionalPageBudget = Math.max(0, config.maxPages - 1);
+    const internalLinks = links
+      .filter((l) => l.startsWith(origin))
+      .slice(0, additionalPageBudget);
+    action(
+      "explore",
+      `Found ${links.length} links (${internalLinks.length} internal to test, cap=${config.maxPages})`,
+      "success",
+    );
 
-    // Visit up to 3 internal pages
-    for (const link of internalLinks.slice(0, 3)) {
+    for (const link of internalLinks) {
       try {
         action("navigate", `Exploring: ${link}`, "running");
         await browser.navigate(link);
@@ -322,9 +388,21 @@ async function run() {
     // 10. Generate report
     action("report", "Generating test report...", "running");
 
-    // Navigate back to original page for final metrics
+    // Navigate back to original page for final metrics. Only re-measure
+    // performance if it's enabled; otherwise reuse whatever we already have
+    // (or null defaults).
     await browser.navigate(url);
-    const finalPerf = await analyzer.getPerformanceMetrics();
+    const finalPerf = config.enablePerformance
+      ? await analyzer.getPerformanceMetrics()
+      : (perfMetrics ?? {
+          lcp: null,
+          fcp: null,
+          cls: null,
+          tti: null,
+          ttfb: null,
+          domContentLoaded: null,
+          loadComplete: null,
+        });
 
     const passed = results.filter((r) => r.status === "pass").length;
     const failed = results.filter((r) => r.status === "fail").length;

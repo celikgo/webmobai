@@ -79,7 +79,16 @@ export function Header({ onOpenSettings }: HeaderProps) {
           return;
         }
 
-        const cmd = Command.create("node", [autoTestPath, url]);
+        // Serialize the user's Configuration-panel settings into a JSON arg
+        // the runner consumes. Trim the local `url` field — already passed
+        // as argv[2] — to avoid duplication and to keep the JSON small.
+        const { url: _ignored, ...runConfig } = config;
+        void _ignored;
+        const cmd = Command.create("node", [
+          autoTestPath,
+          url,
+          JSON.stringify(runConfig),
+        ]);
 
         setStatus("running");
 

@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { AxeBuilder } from "@axe-core/playwright";
 import { logger } from "../utils/logger.js";
 import type { AccessibilityIssue, PerformanceMetrics } from "../types.js";
 import type { BrowserManager } from "./browser-manager.js";
@@ -172,7 +173,53 @@ export class PageAnalyzer {
   async runAccessibilityAudit(): Promise<AccessibilityIssue[]> {
     logger.info("Running accessibility audit");
 
-    // Inject axe-core for accessibility testing
+    // Primary engine: axe-core. It implements the full WCAG 2.1 ruleset
+    // including real color-contrast computation, ARIA-required-children,
+    // landmark uniqueness, focus order, and many other rules our hand-rolled
+    // subset can't realistically cover. We run axe first, then layer in our
+    // own fast-path rules so any custom checks we add later (e.g. project-
+    // specific design-system rules) compose with axe rather than replace it.
+    const axeIssues = await this.runAxeAudit();
+
+    // Supplementary fast-path: a few coarse heuristics axe doesn't cover or
+    // covers differently. Dedupe against axe by rule id.
+    const supplementaryIssues = await this.runSupplementaryAudit();
+    const axeRules = new Set(axeIssues.map((i) => i.rule));
+    const merged = [
+      ...axeIssues,
+      ...supplementaryIssues.filter((i) => !axeRules.has(i.rule)),
+    ];
+
+    logger.info(
+      `Accessibility audit found ${merged.length} issues (${axeIssues.length} from axe-core, ${supplementaryIssues.length} from supplementary rules)`,
+    );
+    return merged;
+  }
+
+  private async runAxeAudit(): Promise<AccessibilityIssue[]> {
+    try {
+      const results = await new AxeBuilder({ page: this.page }).analyze();
+      const issues: AccessibilityIssue[] = [];
+      for (const v of results.violations) {
+        issues.push({
+          id: `axe-${v.id}`,
+          impact: (v.impact ?? "moderate") as AccessibilityIssue["impact"],
+          description: v.description,
+          helpUrl: v.helpUrl,
+          rule: v.id,
+          nodes: v.nodes.map((n) => n.html.slice(0, 200)),
+        });
+      }
+      return issues;
+    } catch (err) {
+      logger.warn(
+        `axe-core audit failed (${err instanceof Error ? err.message : String(err)}); falling back to supplementary rules only`,
+      );
+      return [];
+    }
+  }
+
+  private async runSupplementaryAudit(): Promise<AccessibilityIssue[]> {
     const issues = await this.page.evaluate(async () => {
       // Inline minimal a11y checks since we can't always load axe-core
       const results: {
@@ -332,7 +379,6 @@ export class PageAnalyzer {
       return results;
     });
 
-    logger.info(`Accessibility audit found ${issues.length} issues`);
     return issues.map((i) => ({
       ...i,
       impact: i.impact as AccessibilityIssue["impact"],
