@@ -8,7 +8,8 @@
     "webmobai-mcp": "dist/index.js",
     "webmobai-test": "dist/auto-test.js",
     "webmobai-scenario": "dist/scenario-cli.js",
-    "webmobai-suite": "dist/suite-cli.js"
+    "webmobai-suite": "dist/suite-cli.js",
+    "webmobai-codegen": "dist/codegen-cli.js"
   },
   "scripts": {
     "build": "tsc",
