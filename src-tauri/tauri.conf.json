@@ -45,7 +45,13 @@
       "../mcp-server/dist/**/*",
       "../mcp-server/node_modules/**/*",
       "../mcp-server/package.json"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": null,
+      "providerShortName": null,
+      "entitlements": null
+    }
   },
   "plugins": {
     "shell": {

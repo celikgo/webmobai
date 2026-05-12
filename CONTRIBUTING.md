@@ -43,9 +43,74 @@ npm run dev
 # Build MCP server
 cd mcp-server && npm run build && cd ..
 
-# Build desktop app
+# Build desktop app (unsigned — local use only)
 cargo tauri build
 ```
+
+Unsigned builds open fine on the developer's own machine but are flagged "damaged" by Gatekeeper on any other Mac. Public releases must be signed and notarized — see below.
+
+## Releasing a signed and notarized macOS build
+
+Without signing + notarization, macOS reports the DMG as "damaged and can't be opened" on end-user machines. Users can work around it with `xattr -cr /Applications/WebMobAI.app`, but the only durable fix is a notarized release.
+
+### One-time setup
+
+1. **Apple Developer Program** membership ([$99/year](https://developer.apple.com/programs/)).
+2. Generate a **Developer ID Application** certificate in Apple Developer → Certificates. Download and double-click to install into the login keychain. Verify with:
+   ```bash
+   security find-identity -v -p codesigning
+   # → "Developer ID Application: Your Name (TEAMID)"
+   ```
+3. Generate an **app-specific password** at [appleid.apple.com](https://appleid.apple.com) → Sign-In and Security → App-Specific Passwords. Used for `notarytool` submissions.
+4. Note your **Team ID** from [developer.apple.com/account](https://developer.apple.com/account) (top-right under your name).
+
+### Per-release build
+
+Export the credentials, then build. Tauri reads these env vars at build time and runs signing + notarization automatically.
+
+```bash
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_ID="you@example.com"
+export APPLE_PASSWORD="xxxx-xxxx-xxxx-xxxx"   # app-specific password
+export APPLE_TEAM_ID="TEAMID"
+
+cd mcp-server && npm run build && cd ..
+cargo tauri build
+```
+
+`APPLE_SIGNING_IDENTITY` overrides the `null` placeholder in `src-tauri/tauri.conf.json → bundle.macOS.signingIdentity`, so the committed config stays secret-free.
+
+Notarization adds 1–5 minutes to the build; Tauri staples the notarization ticket to the DMG so the app opens offline on first launch.
+
+### Verify the artifact
+
+```bash
+# Should show a valid Developer ID signature with hardened runtime + notarization
+codesign -dv --verbose=4 /path/to/WebMobAI.app
+spctl -a -t open --context context:primary-signature -vv /path/to/WebMobAI_*.dmg
+# → "accepted, source=Notarized Developer ID"
+```
+
+If `spctl` reports "rejected" or "source=Unnotarized", do not ship the release — re-run with the env vars set, or check the build log for a `notarytool` error.
+
+### Universal (Intel + Apple Silicon) builds
+
+Current releases are `aarch64` only. To produce a universal binary that runs on both architectures:
+
+```bash
+rustup target add x86_64-apple-darwin aarch64-apple-darwin
+cargo tauri build --target universal-apple-darwin
+```
+
+This roughly doubles the bundle size; do it when there's demand from Intel-Mac users.
+
+### Release checklist
+
+- [ ] `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` versions all match.
+- [ ] `CHANGELOG.md` has an entry for the new version.
+- [ ] All four `APPLE_*` env vars are exported.
+- [ ] `codesign -dv` reports a Developer ID signature; `spctl` reports "Notarized".
+- [ ] `gh release create vX.Y.Z` with the signed `.dmg` and `.app.tar.gz` attached.
 
 ## Project Structure
 

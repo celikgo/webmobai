@@ -40,6 +40,12 @@ This installs all five binaries: `webmobai-mcp`, `webmobai-test`, `webmobai-scen
 
 Download the latest `.dmg` from [Releases](https://github.com/celikgo/webmobai/releases). Drag to Applications. The app bundles the MCP server, so you only need Node.js installed.
 
+> ⚠️ **First-launch Gatekeeper warning** ("WebMobAI is damaged and can't be opened"). The current releases are not yet signed or notarized, so macOS quarantines them. The app is fine — strip the quarantine flag once:
+> ```bash
+> xattr -cr /Applications/WebMobAI.app
+> ```
+> See [Troubleshooting → macOS says the app is damaged](#macos-says-the-app-is-damaged) for details.
+
 ### Option C — From source
 
 ```bash
@@ -581,6 +587,21 @@ Run `webmobai_describe_selector` to see what's matching and the recommended tigh
 
 ### "Node.js 18+ is required" from the desktop app
 Install Node.js from https://nodejs.org and restart the app. The desktop app spawns the runner via `node`.
+
+### macOS says the app is damaged
+"WebMobAI is damaged and can't be opened. You should move it to the Trash." The DMG isn't actually damaged — current releases aren't signed or notarized, so Gatekeeper rejects them. Either:
+
+```bash
+# Option 1: strip quarantine from the installed app
+xattr -cr /Applications/WebMobAI.app
+
+# Option 2: strip from the DMG before installing
+xattr -cr ~/Downloads/WebMobAI_*.dmg
+```
+
+You can verify the quarantine flag with `xattr -l /Applications/WebMobAI.app` — `com.apple.quarantine` should be absent after the fix.
+
+Signed/notarized releases are the long-term fix; see [CONTRIBUTING.md → Releasing a signed build](./CONTRIBUTING.md#releasing-a-signed-and-notarized-macos-build).
 
 ### Visual snapshot fails on a small intentional change
 Increase `max_diff_pixel_ratio` (e.g., `0.02` = 2% tolerance) or `threshold` (e.g., `0.3` for less sensitive per-pixel comparison). If the change is intentional, re-run with `update_baseline: true`.

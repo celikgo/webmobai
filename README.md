@@ -52,9 +52,16 @@ The distinctive feature is **self-healing selectors**: when a `[data-testid=subm
 
 1. Download the latest `.dmg` from [Releases](https://github.com/celikgo/webmobai/releases)
 2. Open the `.dmg` and drag WebMobAI to Applications
-3. Launch WebMobAI
+3. **Remove the quarantine flag** (one-time, see note below), then launch WebMobAI
 4. Enter a URL (e.g., `https://example.com`) and click **Test**
 5. A Chromium browser opens and testing runs automatically
+
+> ⚠️ **macOS says "WebMobAI is damaged and can't be opened"?**
+> The current releases are **not yet code-signed or notarized**, so macOS Gatekeeper blocks them. The app isn't damaged — strip the quarantine attribute once and it opens normally:
+> ```bash
+> xattr -cr /Applications/WebMobAI.app
+> ```
+> (or run `xattr -cr ~/Downloads/WebMobAI_*.dmg` before installing). Signed/notarized releases are tracked in [CONTRIBUTING.md → Releasing a signed build](CONTRIBUTING.md#releasing-a-signed-and-notarized-macos-build).
 
 ### Option 2: CLI (npm)
 
