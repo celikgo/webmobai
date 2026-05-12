@@ -2,6 +2,7 @@ import { Monitor, Tablet, Smartphone, MonitorSmartphone } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useSessionStore } from "@/stores/useSessionStore";
+import { toAssetUrl } from "@/lib/utils";
 
 const breakpointIcons: Record<string, React.ReactNode> = {
   Mobile: <Smartphone className="w-4 h-4" />,
@@ -66,7 +67,7 @@ export function ResponsivePanel() {
                   >
                     <div className="aspect-video bg-muted">
                       <img
-                        src={ss.url || ss.path}
+                        src={toAssetUrl(ss.path || ss.url)}
                         alt={ss.description}
                         className="w-full h-full object-cover"
                         loading="lazy"

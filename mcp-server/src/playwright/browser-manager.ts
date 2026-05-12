@@ -1,8 +1,14 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { mkdir } from "fs/promises";
+import { tmpdir } from "os";
 import { join } from "path";
 import { logger } from "../utils/logger.js";
 import type { ConsoleError } from "../types.js";
+
+export function defaultSessionDir(): string {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return join(tmpdir(), `webmobai-${id}`);
+}
 
 export class BrowserManager {
   private browser: Browser | null = null;
@@ -13,7 +19,7 @@ export class BrowserManager {
   private recordingDir: string;
   private screenshotCounter = 0;
 
-  constructor(baseDir: string = process.cwd()) {
+  constructor(baseDir: string = defaultSessionDir()) {
     this.screenshotDir = join(baseDir, "screenshots");
     this.recordingDir = join(baseDir, "recordings");
   }

@@ -12,7 +12,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
-import { BrowserManager } from "./playwright/browser-manager.js";
+import { BrowserManager, defaultSessionDir } from "./playwright/browser-manager.js";
 import { PageAnalyzer } from "./playwright/page-analyzer.js";
 import { generateHtmlReport } from "./utils/report-generator.js";
 import type { TestReportData, TestResult, AccessibilityIssue } from "./types.js";
@@ -78,7 +78,8 @@ async function run() {
   const results: TestResult[] = [];
   const pagesExplored: string[] = [];
   let a11yIssues: AccessibilityIssue[] = [];
-  const browser = new BrowserManager();
+  const sessionDir = defaultSessionDir();
+  const browser = new BrowserManager(sessionDir);
 
   try {
     // 0. Ensure Chromium is downloaded (first-run only).
@@ -343,7 +344,7 @@ async function run() {
       pagesExplored,
     };
 
-    const reportPath = await generateHtmlReport(reportData, process.cwd());
+    const reportPath = await generateHtmlReport(reportData, sessionDir);
     action("report", `Report generated: ${reportPath}`, "success");
 
     // Emit full report for the frontend

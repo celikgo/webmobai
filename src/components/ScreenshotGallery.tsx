@@ -2,7 +2,7 @@ import { Camera, ExternalLink, Download } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useSessionStore } from "@/stores/useSessionStore";
-import { formatTimestamp } from "@/lib/utils";
+import { formatTimestamp, toAssetUrl } from "@/lib/utils";
 
 export function ScreenshotGallery() {
   const { screenshots } = useSessionStore();
@@ -29,7 +29,7 @@ export function ScreenshotGallery() {
           >
             <div className="aspect-video bg-muted flex items-center justify-center">
               <img
-                src={ss.url || ss.path}
+                src={toAssetUrl(ss.path || ss.url)}
                 alt={ss.description}
                 className="w-full h-full object-cover"
                 loading="lazy"
