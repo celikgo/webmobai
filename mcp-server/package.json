@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "bin": {
     "webmobai-mcp": "dist/index.js",
-    "webmobai-test": "dist/auto-test.js"
+    "webmobai-test": "dist/auto-test.js",
+    "webmobai-scenario": "dist/scenario-cli.js"
   },
   "scripts": {
     "build": "tsc",

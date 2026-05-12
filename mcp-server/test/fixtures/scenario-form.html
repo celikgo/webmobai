@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signup</title>
+</head>
+<body>
+  <h1>Create an account</h1>
+  <nav>
+    <a href="/pricing">Pricing</a>
+    <a href="/docs">Docs</a>
+    <a href="/login">Log in</a>
+  </nav>
+  <form id="signup">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email">
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password">
+
+    <button type="submit" data-testid="submit">Sign up</button>
+  </form>
+  <p id="status"></p>
+  <script>
+    const form = document.getElementById('signup');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      document.getElementById('status').textContent = 'Account created!';
+    });
+  </script>
+</body>
+</html>
