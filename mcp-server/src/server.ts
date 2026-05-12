@@ -31,6 +31,10 @@ import {
   handleRouteTool,
   resetRoutes,
 } from "./tools/route-tools.js";
+import {
+  getHistoryToolDefinitions,
+  handleHistoryTool,
+} from "./tools/history-tools.js";
 import { logger } from "./utils/logger.js";
 
 export function createMcpServer(): { server: Server; browserManager: BrowserManager } {
@@ -58,6 +62,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
       ...getReportingToolDefinitions(),
       ...getAssertionToolDefinitions(),
       ...getRouteToolDefinitions(),
+      ...getHistoryToolDefinitions(),
     ];
     return { tools };
   });
@@ -73,6 +78,14 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
     const reportingTools = getReportingToolDefinitions().map((t) => t.name);
     const assertionTools = getAssertionToolDefinitions().map((t) => t.name);
     const routeTools = getRouteToolDefinitions().map((t) => t.name);
+    const historyTools = getHistoryToolDefinitions().map((t) => t.name);
+
+    // History tools don't need a launched browser — they read from
+    // ~/.webmobai/history.json — so route them first, ahead of all the
+    // "browser must be launched" guards.
+    if (historyTools.includes(name)) {
+      return handleHistoryTool(name, args as Record<string, unknown>);
+    }
 
     if (browserTools.includes(name)) {
       return handleBrowserTool(name, args as Record<string, unknown>, browserManager);

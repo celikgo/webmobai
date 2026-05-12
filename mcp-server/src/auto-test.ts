@@ -16,6 +16,7 @@ import { BrowserManager, defaultSessionDir } from "./playwright/browser-manager.
 import { PageAnalyzer } from "./playwright/page-analyzer.js";
 import { generateHtmlReport } from "./utils/report-generator.js";
 import { generateJunitReport } from "./utils/junit-generator.js";
+import { appendRunHistory, type RunHistoryEntry } from "./utils/run-history.js";
 import type { TestReportData, TestResult, AccessibilityIssue } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -433,6 +434,33 @@ async function run() {
       "success",
       "Drop into your CI for native test-result display.",
     );
+
+    // Append a summary to ~/.webmobai/history.json so future runs can
+    // detect regressions against this baseline.
+    const historyEntry: RunHistoryEntry = {
+      id: reportData.id,
+      url,
+      timestamp: reportData.startedAt,
+      durationMs: reportData.completedAt - reportData.startedAt,
+      summary: reportData.summary,
+      metrics: {
+        lcp: reportData.performanceMetrics.lcp,
+        fcp: reportData.performanceMetrics.fcp,
+        cls: reportData.performanceMetrics.cls,
+        tti: reportData.performanceMetrics.tti,
+        ttfb: reportData.performanceMetrics.ttfb,
+      },
+      accessibilityIssueCount: reportData.accessibilityIssues.length,
+      consoleErrorCount: reportData.consoleErrors.filter((e) => e.type === "error").length,
+      networkErrorCount: browser.getNetworkErrors().length,
+    };
+    await appendRunHistory(historyEntry).catch((err) => {
+      action(
+        "info",
+        `Could not append to history: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+    });
 
     // Emit full report for the frontend
     emit("report", reportData as unknown as Record<string, unknown>);
