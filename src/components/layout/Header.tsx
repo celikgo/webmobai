@@ -53,12 +53,33 @@ export function Header({ onOpenSettings }: HeaderProps) {
       const isTauri = "__TAURI__" in window;
 
       if (isTauri) {
-        // Use Tauri shell to spawn the auto-test runner
+        // Resolve the bundled auto-test runner. In dev this returns the path
+        // under the project's mcp-server/dist; in a bundled build it returns
+        // the path under the app's Resources directory.
+        const { resolveResource } = await import("@tauri-apps/api/path");
+        const autoTestPath = await resolveResource(
+          "../mcp-server/dist/auto-test.js",
+        );
+
         const { Command } = await import("@tauri-apps/plugin-shell");
-        const cmd = Command.create("node", [
-          "/Users/celikgo/WebstormProjects/web-run/mcp-server/dist/auto-test.js",
-          url,
-        ]);
+
+        // Pre-flight: verify `node` is on PATH so we can give the user a clear
+        // message instead of a silent failure.
+        try {
+          const probe = await Command.create("node", ["--version"]).execute();
+          if (probe.code !== 0) throw new Error(probe.stderr || "exit " + probe.code);
+        } catch (probeErr) {
+          addAction({
+            type: "error",
+            description: "Node.js 18+ is required to run the desktop test runner.",
+            details: `Install Node from https://nodejs.org and restart WebMobAI. (${String(probeErr)})`,
+            status: "error",
+          });
+          setStatus("error");
+          return;
+        }
+
+        const cmd = Command.create("node", [autoTestPath, url]);
 
         setStatus("running");
 

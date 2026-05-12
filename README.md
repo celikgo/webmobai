@@ -74,6 +74,8 @@ You (Claude Desktop/Code) ──MCP──> WebMobAI MCP Server ──Playwright�
 
 ### Option 1: Desktop App (Easiest)
 
+**Requires** [Node.js 18+](https://nodejs.org) on your PATH (the app spawns the test runner via `node`). The first time you click **Test**, the app downloads Chromium (~170MB, one-time).
+
 1. Download the latest `.dmg` from [Releases](https://github.com/celikgo/webmobai/releases)
 2. Open the `.dmg` and drag WebMobAI to Applications
 3. Launch WebMobAI

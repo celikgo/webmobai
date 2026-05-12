@@ -6,10 +6,18 @@
  * Outputs JSON lines to stdout for the frontend to consume.
  */
 
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { chromium } from "playwright";
 import { BrowserManager } from "./playwright/browser-manager.js";
 import { PageAnalyzer } from "./playwright/page-analyzer.js";
 import { generateHtmlReport } from "./utils/report-generator.js";
 import type { TestReportData, TestResult, AccessibilityIssue } from "./types.js";
+
+const execFileAsync = promisify(execFile);
 
 const url = process.argv[2];
 if (!url) {
@@ -37,6 +45,34 @@ function action(
   });
 }
 
+async function ensureChromiumInstalled() {
+  if (existsSync(chromium.executablePath())) return;
+
+  action(
+    "info",
+    "First run — downloading Chromium (~170MB). This only happens once.",
+    "running",
+  );
+
+  // Locate playwright's CLI relative to this file. Works in both the dev
+  // layout (mcp-server/dist/auto-test.js next to mcp-server/node_modules/...)
+  // and the bundled layout (Resources/_up_/mcp-server/dist + node_modules).
+  const here = dirname(fileURLToPath(import.meta.url));
+  const cliPath = resolve(here, "..", "node_modules", "playwright", "cli.js");
+
+  if (!existsSync(cliPath)) {
+    throw new Error(
+      `Cannot find Playwright CLI at ${cliPath}. The runner's node_modules is missing — reinstall the app.`,
+    );
+  }
+
+  await execFileAsync(process.execPath, [cliPath, "install", "chromium"], {
+    timeout: 10 * 60 * 1000,
+  });
+
+  action("info", "Chromium installed", "success");
+}
+
 async function run() {
   const startedAt = Date.now();
   const results: TestResult[] = [];
@@ -45,6 +81,9 @@ async function run() {
   const browser = new BrowserManager();
 
   try {
+    // 0. Ensure Chromium is downloaded (first-run only).
+    await ensureChromiumInstalled();
+
     // 1. Launch browser
     action("info", "Launching isolated Chromium browser...", "running");
     await browser.launch({ headless: false, recordVideo: true });
