@@ -1,74 +1,48 @@
 # WebMobAI
 
-**Autonomous Web QA Desktop Application** powered by Playwright + Claude AI.
+**AI-leveraged end-to-end web testing framework**, powered by Playwright (Chromium / Firefox / WebKit) + Claude AI.
 
-WebMobAI automatically explores, tests, and audits any website through a visible browser window. Enter a URL, click **Test**, and watch as it opens an isolated Chromium browser, navigates pages, checks accessibility, measures performance, tests responsive layouts, and generates detailed HTML reports.
+WebMobAI gives you four ways to test the same browser engine:
 
-Works in two modes:
-- **Standalone** — click Test in the desktop app and it runs a full automated audit instantly
-- **AI-Driven** — connect Claude via MCP for deeper, intelligent exploratory testing
+1. **Desktop app** — enter a URL, click Test, get a report
+2. **Standalone CLI** — `webmobai-test`, `webmobai-scenario`, `webmobai-suite`, `webmobai-codegen`
+3. **Scripted scenarios** — JSON files with assertions, network mocking, visual snapshots
+4. **AI-driven via MCP** — Claude calls 43 tools to compose tests in natural language
 
-## How It Works
+The distinctive feature is **self-healing selectors**: when a `[data-testid=submit]` stops matching (because someone renamed the testid), the tool response includes the prior element fingerprint, ranked candidate replacements, and the page-state triage — so an AI client retries with a smarter selector instead of failing the test.
 
-### Standalone Mode (No AI needed)
-```
-WebMobAI Desktop App ──click "Test"──> Auto-Test Runner ──Playwright──> Chromium Browser
-       │                                                                      │
-       └──── Real-time action log, screenshots, report <──────────────────────┘
-```
+📘 **Full documentation**: [USER_MANUAL.md](./USER_MANUAL.md) &nbsp;·&nbsp; [FEATURES.md](./FEATURES.md) &nbsp;·&nbsp; [CONTRIBUTING.md](./CONTRIBUTING.md)
 
-1. Open WebMobAI, enter a URL, click **Test**
-2. A visible Chromium browser opens and testing begins automatically
-3. The app shows real-time progress: actions, screenshots, accessibility issues, performance metrics
-4. An HTML test report is generated when complete
+---
 
-### AI-Driven Mode (Claude MCP)
-```
-You (Claude Desktop/Code) ──MCP──> WebMobAI MCP Server ──Playwright──> Chromium Browser
-                                        │
-                                        ▼
-                                  Test Reports, Screenshots, Videos
-```
+## What's in the box
 
-1. Connect Claude to the WebMobAI MCP server
-2. Ask: *"Launch the browser, test https://example.com, and generate a report"*
-3. Claude autonomously explores, fills forms, discovers edge cases, and reports findings
+| Capability | Tool / CLI |
+|---|---|
+| Run a full audit on a URL | `webmobai-test <url>` |
+| Run a JSON test scenario | `webmobai-scenario <file>` |
+| Run a parallel suite (sharding, tag filters) | `webmobai-suite <file> --workers 4 --shard 1/4 --tag smoke` |
+| Record interactions → scenario | `webmobai-codegen <url> -o test.json` |
+| MCP server for Claude | `webmobai-mcp` |
+| 5 assertion verbs with auto-wait | `webmobai_assert_visible`, `_text`, `_url`, `_count`, `_hidden` |
+| Request interception / mocking | `webmobai_route`, `webmobai_unroute` |
+| Pixel-perfect visual regression | `webmobai_visual_snapshot` + scenario step |
+| Multi-browser (Chromium / Firefox / WebKit) | `webmobai_launch_browser { browser: "firefox" }` |
+| Mobile device emulation | `webmobai_launch_browser { device: "iPhone 13" }` |
+| Web Vitals: LCP / FCP / CLS / TTI / **INP** / TTFB | `webmobai_get_performance_metrics`, `webmobai_run_perf_multi` |
+| Network + CPU throttling | `webmobai_set_network_throttle`, `_cpu_throttle` |
+| A11y audit (axe-core) | `webmobai_accessibility_audit` |
+| Security audit (CSP, mixed content, cookies) | `webmobai_security_audit` |
+| SEO audit + broken-link crawl | `webmobai_seo_audit`, `_check_broken_links` |
+| PWA audit (manifest, SW, offline) | `webmobai_pwa_audit` |
+| Run history + regression detection | `webmobai_get_run_history`, `_check_regressions` |
+| Playwright traces for time-travel debugging | Auto-captured to `<session>/trace.zip` |
+| JUnit XML for CI integration | Auto-emitted alongside HTML |
+| Selector inspector | `webmobai_describe_selector` |
 
-## Features
+**43 MCP tools**, **5 binaries**, **158 tests**, and the test surface stays green on Chromium + Firefox + WebKit via CI.
 
-### Standalone Auto-Test (one-click)
-- Page load verification
-- Broken image detection
-- Console error monitoring
-- Accessibility audit (alt text, labels, ARIA, landmarks, skip links)
-- Core Web Vitals (LCP, FCP, CLS, TTI, TTFB)
-- Responsive testing at mobile (375px), tablet (768px), desktop (1280px)
-- Internal link exploration (auto-crawls up to 3 pages)
-- HTML test report generation with all findings
-
-### AI-Driven Testing (25 MCP Tools)
-- **Browser Control** — launch, navigate, click, type, scroll, screenshot, viewport resize, close
-- **Page Analysis** — DOM summary, interactive elements, links, console errors, custom JS evaluation
-- **Accessibility Audit** — missing alt text, form labels, ARIA attributes, landmarks, skip links, color contrast
-- **Performance Metrics** — LCP, FCP, CLS, TTI, TTFB, DOM Content Loaded, Load Complete
-- **Responsive Testing** — automated testing at configurable breakpoints with screenshots
-- **Report Generation** — HTML reports with test results, a11y issues, performance scores, screenshots
-
-### Desktop App (Tauri 2.0)
-- One-click testing — enter URL, click Test, watch results stream in
-- Real-time action log with status indicators
-- Screenshot gallery with viewport metadata
-- Accessibility issues panel grouped by severity
-- Performance metrics dashboard with Web Vitals ratings
-- Responsive testing panel organized by breakpoint
-- Session configuration (viewport, credentials, breakpoints, max pages)
-- Dark/Light theme support
-
-### Isolated Browser
-- Every session uses a fresh Chromium profile (no cookies, cache, extensions)
-- Never touches your real browser profiles or accounts
-- Headed mode — you see the browser window live during testing
-- Optional video recording of full sessions
+---
 
 ## Quick Start
 
@@ -81,26 +55,25 @@ You (Claude Desktop/Code) ──MCP──> WebMobAI MCP Server ──Playwright�
 3. Launch WebMobAI
 4. Enter a URL (e.g., `https://example.com`) and click **Test**
 5. A Chromium browser opens and testing runs automatically
-6. Watch real-time results in the action log, screenshots, and report panels
 
-### Option 2: MCP Server + Claude (AI-Driven)
-
-Install the MCP server:
+### Option 2: CLI (npm)
 
 ```bash
 npm install -g webmobai-mcp
+
+webmobai-test https://example.com                  # one-shot full audit
+webmobai-scenario ./scenarios/login.json           # run a scripted scenario
+webmobai-suite ./suite.json --workers 4 --tag smoke   # parallel CI suite
+webmobai-codegen https://example.com -o test.json  # record a flow interactively
 ```
 
-Add to your Claude configuration:
+### Option 3: Claude (AI-Driven via MCP)
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "webmobai": {
-      "command": "npx",
-      "args": ["-y", "webmobai-mcp"]
-    }
+    "webmobai": { "command": "npx", "args": ["-y", "webmobai-mcp"] }
   }
 }
 ```
@@ -109,151 +82,130 @@ Add to your Claude configuration:
 ```json
 {
   "mcpServers": {
-    "webmobai": {
-      "command": "npx",
-      "args": ["-y", "webmobai-mcp"]
-    }
+    "webmobai": { "command": "npx", "args": ["-y", "webmobai-mcp"] }
   }
 }
 ```
 
-Restart Claude and ask: *"Launch the browser, navigate to https://example.com, explore the site, run accessibility and performance audits, and generate a report."*
+Restart Claude and ask:
 
-### Option 3: Build from Source
+> *"Test the signup flow at https://app.example.com — fill the form with test@example.com and Password123!, submit, verify the welcome page, then check a11y and performance."*
+
+Claude composes the tool calls; WebMobAI executes them in a visible browser.
+
+### Option 4: Build from Source
 
 ```bash
-# Prerequisites
-# - Node.js 18+
-# - Rust (install via https://rustup.rs)
-# - Tauri CLI: cargo install tauri-cli --version "^2"
-
 git clone https://github.com/celikgo/webmobai.git
 cd webmobai
 
-# Install dependencies
-npm install
+# MCP server + binaries
 cd mcp-server && npm install && npm run build && cd ..
 
-# Install Playwright Chromium
-cd mcp-server && npx playwright install chromium && cd ..
-
-# Run in dev mode
-cargo tauri dev
-
-# Build production release
-cargo tauri build
+# Desktop app (Tauri)
+npm install
+cargo install tauri-cli --version "^2"  # if you don't have it
+cargo tauri dev    # dev mode
+cargo tauri build  # production .dmg
 ```
 
-## MCP Tools Reference
+---
 
-### Browser Control
+## Example: scripted scenario
 
-| Tool | Description |
-|------|-------------|
-| `webmobai_launch_browser` | Launch isolated Chromium in visible mode |
-| `webmobai_navigate` | Navigate to a URL (waits for load) |
-| `webmobai_click` | Click an element by CSS/Playwright selector |
-| `webmobai_type` | Type text into an input field |
-| `webmobai_scroll` | Scroll up or down by pixels |
-| `webmobai_screenshot` | Capture viewport or full-page screenshot |
-| `webmobai_set_viewport` | Change viewport dimensions |
-| `webmobai_close_browser` | Close browser and save video |
-
-### Page Analysis
-
-| Tool | Description |
-|------|-------------|
-| `webmobai_get_page_state` | DOM summary: headings, links, forms, buttons, images |
-| `webmobai_get_interactive_elements` | List all clickable/typeable elements with selectors |
-| `webmobai_get_links` | All links (internal/external) on current page |
-| `webmobai_check_errors` | Broken images, console errors, network failures |
-| `webmobai_get_console_errors` | All captured console errors and warnings |
-| `webmobai_evaluate` | Execute arbitrary JavaScript in page context |
-| `webmobai_wait_for` | Wait for selector, URL match, or timeout |
-| `webmobai_hover` | Hover over an element (test tooltips, dropdowns) |
-| `webmobai_select_option` | Select from a dropdown |
-| `webmobai_press_key` | Press keyboard key (Enter, Tab, Escape, etc.) |
-| `webmobai_go_back` | Navigate back in history |
-
-### Testing & Reporting
-
-| Tool | Description |
-|------|-------------|
-| `webmobai_accessibility_audit` | Full a11y audit (alt text, labels, ARIA, landmarks) |
-| `webmobai_get_accessibility_tree` | Screen-reader view of the page |
-| `webmobai_get_performance_metrics` | Web Vitals: LCP, FCP, CLS, TTI, TTFB |
-| `webmobai_test_responsive` | Test at multiple breakpoints with screenshots |
-| `webmobai_add_test_result` | Record a test result for the report |
-| `webmobai_generate_report` | Generate final HTML report with all data |
-
-## Example Prompts
-
-Once connected, try these with Claude:
-
-```
-"Launch the browser and test https://example.com — check every page, run accessibility
-and performance audits, test responsive layouts, and generate a full report."
-
-"Open https://myapp.com/login, type test@example.com into the email field and
-'password123' into the password field, click Sign In, and verify the dashboard loads."
-
-"Navigate to https://mysite.com and find all broken images, console errors, and
-missing accessibility labels."
-
-"Test https://shop.example.com at mobile (375x812), tablet (768x1024), and
-desktop (1920x1080) and take screenshots at each breakpoint."
+`./scenarios/signup.json`:
+```json
+{
+  "name": "Signup happy path",
+  "url": "https://app.example.com/signup",
+  "steps": [
+    { "type": "assertVisible", "selector": "h1" },
+    { "type": "type", "selector": "#email", "text": "test@example.com" },
+    { "type": "type", "selector": "#password", "text": "TestPass123!" },
+    { "type": "click", "selector": "[data-testid=submit]" },
+    { "type": "wait", "urlContains": "/welcome" },
+    { "type": "assertText", "selector": "h1", "expected": "Welcome" },
+    { "type": "visualSnapshot", "name": "welcome", "baselineDir": "./visual-baselines" }
+  ]
+}
 ```
 
-## Tech Stack
+```bash
+webmobai-scenario ./scenarios/signup.json
+```
+
+Produces an HTML report, a JUnit XML, a Playwright trace, and a visual baseline (first run) or diff (subsequent runs).
+
+## Example: parallel CI suite
+
+`./e2e/suite.json`:
+```json
+{
+  "name": "Pre-deploy E2E",
+  "defaults": { "browser": "chromium", "viewport": { "width": 1280, "height": 720 } },
+  "scenarios": [
+    { "path": "./scenarios/login.json", "tags": ["smoke", "auth"] },
+    { "path": "./scenarios/signup.json", "tags": ["e2e", "auth"] },
+    { "path": "./scenarios/checkout.json", "tags": ["e2e"] }
+  ]
+}
+```
+
+On each CI machine:
+```bash
+webmobai-suite ./e2e/suite.json --shard $SHARD/4 --workers 2 --tag e2e
+```
+
+Suite-level HTML + JUnit reports are written for downstream CI consumption.
+
+---
+
+## Tech stack
 
 | Component | Technology |
-|-----------|-----------|
-| Desktop App | [Tauri 2.0](https://tauri.app) (Rust + WebView) |
+|---|---|
+| Desktop app | [Tauri 2.0](https://tauri.app) (Rust + WebView) |
 | Frontend | React 19, TypeScript, Tailwind CSS v4, Zustand |
-| UI Components | shadcn/ui, Radix UI, Lucide Icons |
-| MCP Server | [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk) |
-| Browser Engine | [Playwright](https://playwright.dev) (Chromium) |
-| Build Tool | Vite 6 |
+| MCP server | [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk) |
+| Browser engine | [Playwright](https://playwright.dev) (Chromium / Firefox / WebKit) |
+| A11y engine | [axe-core](https://github.com/dequelabs/axe-core) via `@axe-core/playwright` |
+| Pixel diff | [pixelmatch](https://github.com/mapbox/pixelmatch) + [pngjs](https://github.com/lukeapage/pngjs) |
+| Build / test | Vite 6 (frontend), TypeScript 5.7, Vitest 4 |
 
 ## Architecture
 
 ```
 webmobai/
 ├── src/                    # React frontend (Tauri webview)
-│   ├── components/         # UI components (shadcn/ui)
-│   ├── stores/             # Zustand state management
-│   ├── types/              # TypeScript type definitions
-│   └── App.tsx             # Main application shell
 ├── src-tauri/              # Tauri Rust backend
-│   ├── src/lib.rs          # IPC commands, app state
-│   └── tauri.conf.json     # Tauri configuration
-├── mcp-server/             # Standalone MCP server (npm package)
+├── mcp-server/             # MCP server + CLI binaries (npm: webmobai-mcp)
 │   ├── src/
-│   │   ├── server.ts       # MCP server setup + tool routing
-│   │   ├── tools/          # Tool implementations
-│   │   │   ├── browser-tools.ts
-│   │   │   ├── testing-tools.ts
-│   │   │   ├── accessibility-tools.ts
-│   │   │   └── reporting-tools.ts
-│   │   ├── playwright/     # Browser automation
-│   │   │   ├── browser-manager.ts
-│   │   │   └── page-analyzer.ts
-│   │   └── utils/          # Logging, report generation
-│   └── package.json
-└── package.json            # Root workspace
+│   │   ├── index.ts                MCP server entrypoint
+│   │   ├── auto-test.ts            webmobai-test CLI
+│   │   ├── scenario-cli.ts         webmobai-scenario CLI
+│   │   ├── suite-cli.ts            webmobai-suite CLI
+│   │   ├── codegen-cli.ts          webmobai-codegen CLI
+│   │   ├── playwright/             BrowserManager, PageAnalyzer, element snapshots
+│   │   ├── tools/                  11 MCP tool files (43 tools)
+│   │   ├── scenario/               types, runner, scaffolder
+│   │   ├── suite/                  types, loader, filter, runner
+│   │   ├── visual/                 comparator, baseline-store
+│   │   ├── utils/                  report generators, history, failure triage
+│   │   └── run-config.ts           SessionConfig parser
+│   └── test/                       158 tests across 20 files
+└── .claude/skills/         # Claude Code skills for AI-driven workflows
 ```
 
 ## Requirements
 
-- **macOS** 12+ / **Windows** 10+ / **Linux** (for desktop app)
-- **Node.js** 18+
-- **Playwright Chromium** (installed automatically)
-- **Claude Desktop** or **Claude Code** (for AI-driven testing)
+- **macOS** 12+ (other OSes work for the CLI; desktop app currently macOS-only via CI)
+- **Node.js** 18+ for the CLI and the desktop app's runner
+- Chromium / Firefox / WebKit installed by Playwright automatically on first use
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, test guidelines, and how to add MCP tools, scenario step types, or skills.

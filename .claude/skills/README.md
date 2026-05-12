@@ -1,8 +1,10 @@
 # WebMobAI Skills
 
-This directory contains project-scoped Claude Code skills for **WebMobAI** — the autonomous web QA tool that pairs a Tauri desktop app with an MCP server exposing 25+ Playwright-driven web testing tools.
+This directory contains project-scoped Claude Code skills for **WebMobAI** — the AI-leveraged end-to-end web testing framework that pairs a Tauri desktop app, four CLI binaries, and an MCP server exposing **43 Playwright-driven web testing tools**.
 
 Skills here teach Claude *how* to drive WebMobAI's MCP tools cohesively for common QA jobs. Each skill is a self-contained workflow: when the user describes a job, the matching skill is auto-invoked and Claude follows its documented steps.
+
+For installation, the scenario / suite formats, and the full tool reference, see [USER_MANUAL.md](../../USER_MANUAL.md). For the shipped feature inventory, see [FEATURES.md](../../FEATURES.md).
 
 ## Available Skills
 
@@ -98,26 +100,22 @@ The tool enforces three values; use them consistently:
 
 ## Underlying Tool Reference
 
-All skills are thin orchestrations over the WebMobAI MCP tools. The full tool list:
+All skills are thin orchestrations over the WebMobAI MCP tools. **43 tools** across these categories — see [USER_MANUAL.md §7](../../USER_MANUAL.md#7-mcp-tool-reference) for the full list with descriptions.
 
-### Browser Control (8)
-`webmobai_launch_browser`, `webmobai_navigate`, `webmobai_click`, `webmobai_type`,
-`webmobai_scroll`, `webmobai_screenshot`, `webmobai_set_viewport`, `webmobai_close_browser`
+| Category | Count | Examples |
+|---|---|---|
+| Browser control | 8 | launch_browser (chromium/firefox/webkit + device emulation), navigate, click, type, screenshot, … |
+| Page analysis | 11 | get_page_state, check_errors (now incl. network failures), evaluate, wait_for, … |
+| Accessibility | 2 | accessibility_audit (axe-core primary engine), get_accessibility_tree (real CDP tree) |
+| Reporting | 4 | get_performance_metrics (LCP/FCP/CLS/TTI/INP/TTFB + LCP element), test_responsive, generate_report, … |
+| **Assertions** | 5 | assert_visible / hidden / text / url / count — with auto-wait + self-healing diagnostics on fail |
+| **Request mocking** | 2 | route (fulfill/abort/continue), unroute |
+| **Performance control** | 3 | set_network_throttle (slow-3g/fast-3g/slow-4g/offline), set_cpu_throttle, run_perf_multi |
+| **Visual regression** | 1 | visual_snapshot — pixelmatch-backed, writes actual+diff PNGs on mismatch |
+| **Audits** | 3 | security_audit (CSP/mixed/cookies), seo_audit, pwa_audit |
+| **Other** | 4 | check_broken_links, generate_scenario, get_run_history, check_regressions, describe_selector |
 
-### Page Analysis (11)
-`webmobai_get_page_state`, `webmobai_get_interactive_elements`, `webmobai_get_links`,
-`webmobai_check_errors`, `webmobai_get_console_errors`, `webmobai_evaluate`,
-`webmobai_wait_for`, `webmobai_hover`, `webmobai_select_option`, `webmobai_press_key`,
-`webmobai_go_back`
-
-### Accessibility (2)
-`webmobai_accessibility_audit`, `webmobai_get_accessibility_tree`
-
-### Reporting (4)
-`webmobai_get_performance_metrics`, `webmobai_test_responsive`,
-`webmobai_add_test_result`, `webmobai_generate_report`
-
-Tools are implemented in `mcp-server/src/tools/`. Web Vitals thresholds, accessibility rules, and report formatting all live in that source — when in doubt about what a tool *actually* does, read the source.
+Tools are implemented in `mcp-server/src/tools/`. Web Vitals thresholds, accessibility rules, throttling presets, and report formatting all live in that source — when in doubt about what a tool *actually* does, read the source.
 
 ## Adding a New Skill
 
@@ -147,6 +145,6 @@ To add a new skill:
 
 - **One job per skill**. If a skill does two unrelated things, split it.
 - **Cite the actual tool names**. `webmobai_navigate`, not "navigate the page" — Claude needs the exact identifiers to call them.
-- **Be honest about limitations**. WebMobAI's a11y audit isn't axe-core. Web Vitals are single-run, unthrottled. Visual regression isn't pixel-diff. Surface these caveats so users don't over-trust the output.
+- **Be honest about limitations**. Most of the v1 caveats have been resolved — a11y is now axe-core, visual regression is pixel-diff via pixelmatch, Web Vitals can be throttled + multi-run aggregated. The remaining honest gaps live in [FEATURES.md §4](../../FEATURES.md). Cite those, not stale ones.
 - **Workflow first, narrative second**. The numbered workflow is what Claude executes. Tips and explanations are context — keep them tight.
 - **Cross-reference**. If another skill is a better fit for a sub-case, name it. Skills should hand off to each other rather than reimplement.

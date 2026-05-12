@@ -9,9 +9,13 @@ description: Use when the user wants to measure web performance — Core Web Vit
 
 This skill measures and reports on web performance using WebMobAI's Web Vitals collection. It captures LCP, FCP, CLS, TTI, TTFB, DOM Content Loaded, and full load time for one or more pages, rates each metric against Google's Web Vitals thresholds, and produces an HTML report with findings.
 
-**Scope of the underlying tool**: `webmobai_get_performance_metrics` reads PerformanceObserver entries and navigation timing from the browser after page load. It is **single-run, single-viewport, on whatever network the host machine is using**. It does **not**:
-- Simulate slow 3G / fast 3G / "Lighthouse mobile" throttling
-- Average across multiple loads (variance can be high)
+**Scope of the underlying tools** (v1.2 added several upgrades — make sure you use them):
+- `webmobai_get_performance_metrics` — single-run reads LCP / FCP / CLS / TTI / **INP** (replaced FID in March 2024) / TTFB / load timings, plus the **LCP element fingerprint** (tag, src, text, size).
+- `webmobai_run_perf_multi` — multi-run aggregation (1-10 runs) with median + p95 + min + max per metric. Use this when stability matters.
+- `webmobai_set_network_throttle` — slow-3g / fast-3g / slow-4g / offline presets matching Chrome DevTools.
+- `webmobai_set_cpu_throttle` — slowdown multiplier (4 = Lighthouse mobile profile).
+
+What we still do **not** do:
 - Capture field/RUM data
 - Provide a Lighthouse-style "performance score" out of 100
 
@@ -78,7 +82,7 @@ If the user asked for desktop only, but the desktop numbers are concerning, brie
 - Re-navigate
 - Re-collect
 
-Mobile LCP is typically 1.5–2.5× desktop on the same site. If the user wants real mobile simulation (CPU throttling, network throttling), say so — this tool does not do that.
+Mobile LCP is typically 1.5–2.5× desktop on the same site. For realistic mobile simulation, call `webmobai_set_network_throttle({preset: "slow-4g"})` and `webmobai_set_cpu_throttle({slowdown: 4})` before measurement. For touch + DPR emulation use `webmobai_launch_browser({device: "Pixel 5"})`.
 
 ### 4. Report
 `webmobai_generate_report` with the primary URL. The HTML report includes the perf metrics section. Surface the report path and the top regressions.
@@ -163,7 +167,7 @@ Performance audit — https://example.com/pricing (desktop, single run)
 - **Background tabs / other apps affect results**. Tell the user the run reflects the host machine's load, not a clean CI environment.
 - **CLS measurement window**: CLS accumulates over the page's lifetime in the tool's measurement. Long sessions inflate CLS even when the initial load was stable. Measure shortly after load.
 - **TTFB on cached pages**: subsequent loads in the same session have warm DNS/TCP. The number you see may be optimistic vs. a real first-time visitor.
-- **No throttling**. If the user wants "Lighthouse Mobile" numbers (4× CPU slowdown, slow 4G), this tool cannot produce them. Recommend Lighthouse CLI for that.
+- **Lighthouse parity**: for the official perf score (0-100), Lighthouse CLI is still authoritative. We complement it with `set_network_throttle` + `set_cpu_throttle` + `run_perf_multi` for the underlying metrics, but we don't compute the weighted score.
 - **Comparing to baselines**: if the user has prior numbers, ask whether they came from this tool, Lighthouse, or Chrome DevTools — they're not directly comparable.
 
 ## Example Invocations

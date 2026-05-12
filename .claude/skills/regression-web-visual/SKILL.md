@@ -9,7 +9,12 @@ description: Use when the user wants to detect visual changes between two states
 
 This skill performs a visual regression check: take screenshots of a site in a *baseline* state, take screenshots of the same site in a *current* state, and surface which pages and breakpoints visually changed. The output is a report with side-by-side screenshots and a list of pages flagged for human review.
 
-**Important caveat**: WebMobAI does not provide pixel-diffing out of the box. This skill captures the *evidence* (matched screenshots at matched viewports for the same URL paths) and presents them for a human to compare. If you need automated pixel-diff with tolerance thresholds, route the user to Percy, Chromatic, or Playwright's built-in `toHaveScreenshot()` — and offer to set those up separately.
+**Two modes** as of v1.2:
+
+1. **Structural diff** (this skill's classic mode) — capture matched screenshots at matched viewports for the same URL paths, run heuristics on metadata (title, heading count, body text length, errors), present a side-by-side gallery for human review. Catches content/structure regressions but not pure visual ones.
+2. **Pixel-perfect diff** via `webmobai_visual_snapshot` (or the `visualSnapshot` scenario step). Backed by `pixelmatch` (the same library Playwright's `toHaveScreenshot()` uses). First call against a name saves the baseline; subsequent calls produce `.diff.png` highlighting changed pixels. Use this when you care about specific pixel-level diffs (a button moved 4px, a color changed from `#0066CC` to `#0066CD`).
+
+Prefer **pixel-perfect** for individual elements / hero sections where exact visuals matter. Prefer **structural** for cross-page comparison surveys where "did anything notable change" matters more than "did anything visually change."
 
 What this skill *does* well:
 - Reliable, deterministic screenshot capture for matched URL+viewport pairs
@@ -26,7 +31,8 @@ What this skill *does* well:
 - "Verify the redesign didn't break other pages"
 
 Don't use this for:
-- Pixel-perfect diffing (use Percy/Chromatic)
+- Pixel-perfect diffing of individual elements — use `webmobai_visual_snapshot` directly instead (it's faster and more focused than running this whole skill)
+- Hosted baseline review with PR-comment integration — that's a real Percy / Chromatic feature; we ship in-tree pixel-diff but not the collaboration layer
 - Functional regressions (use `running-web-smoke-test` or `testing-web-app`)
 - Comparing two completely different sites (this assumes the *same* paths exist on both URLs)
 
@@ -102,7 +108,7 @@ For each (path, breakpoint):
 ```
 
 Be honest about confidence levels:
-- "PASS" means no structural change detected. Visual changes (color, spacing, fonts) won't be caught by these heuristics — only a real pixel diff or human eye will catch them.
+- "PASS" means no structural change detected. Pure visual changes (color, spacing, fonts) won't be caught by these heuristics — for those, pair this skill with one or more `webmobai_visual_snapshot` calls on the elements that matter.
 - "WARN" / "FAIL" means *something* changed, and the user should look.
 
 ## Tools Used
@@ -138,7 +144,7 @@ Visual regression — baseline=https://example.com vs current=https://staging.ex
   Report: /tmp/webmobai-report-1715534000.html
 
   Visual changes (color, spacing, fonts) won't be flagged by the heuristics here.
-  For pixel-level diffing, set up Percy or Playwright's toHaveScreenshot().
+  For pixel-level diffing, layer in `webmobai_visual_snapshot` calls on specific elements.
 ```
 
 ## Tips & Gotchas
@@ -149,7 +155,7 @@ Visual regression — baseline=https://example.com vs current=https://staging.ex
 - **Cookie banners**: GDPR/cookie banners that appear on baseline but were dismissed on current (or vice versa) will skew the screenshots. Dismiss them deterministically on both sides, or accept that the top of the page will always differ.
 - **Sticky elements**: if a sticky banner / nav changes height between versions, every below-the-fold screenshot will look shifted even if nothing else changed.
 - **`full_page: true` is heavy**: full-page screenshots on long pages can produce 10MB+ PNGs. Reasonable for ~20 pages; impractical for 200.
-- **Pixel-diff is the real answer**: this skill catches *structural* regressions. For visual regressions in the strict sense (a button moved 4px, a color changed from `#0066CC` to `#0066CD`), you need real pixel diffing. Be candid with the user — don't pretend this skill replaces Percy.
+- **Two-tier strategy**: this skill catches *structural* regressions cheaply across many pages; `webmobai_visual_snapshot` catches *pixel-level* regressions on specific elements. Use both. For hosted baseline review across a team (PR comments, shared approval workflows), recommend Percy / Chromatic — we ship the in-tree pixel diff but not the collaboration layer.
 - **Order matters for caching**: do baseline first, then current — or vice versa, but be consistent. If you alternate, you may be measuring cache effects rather than real differences.
 - **Disable animations**: if pages have entrance animations, you may catch them mid-animation. Inject CSS via `webmobai_evaluate` to disable transitions/animations during the regression run:
   ```js
@@ -167,7 +173,7 @@ User: *"We're about to deploy — visually check the top 5 pages."*
 → Confirm the top 5 paths with the user. Capture baseline from production, current from staging. Run heuristics. Flag.
 
 User: *"Pixel-perfect compare — did anything change at all?"*
-→ Surface the limitation up front: this skill catches structural changes but not pure visual changes. Offer to set up Playwright's `toHaveScreenshot()` or recommend Percy. Then run the structural check anyway as a fast first pass.
+→ Use `webmobai_visual_snapshot` directly with a small `max_diff_pixel_ratio` (e.g., 0.001) on the elements that matter. That's what the in-tree pixel diff is for. If the user wants pixel-perfect across hundreds of paths with hosted baseline review, recommend Percy / Chromatic on top.
 
 User: *"Take the same screenshots on staging and prod so I can compare manually."*
 → Skip the heuristics and just produce a matched set of screenshots cleanly named. Report the file paths.

@@ -18,7 +18,7 @@ This skill performs a thorough accessibility audit of a website using WebMobAI's
 - Heading hierarchy
 - Color contrast (where computable)
 
-It is **not** a substitute for axe-core or Lighthouse, and it does **not** test full keyboard navigation, focus management on SPA route changes, or screen-reader announcement quality. If the user needs that depth, surface the limitation up front and recommend they pair this audit with axe DevTools.
+As of v1.2 the **primary engine is @axe-core/playwright** — full WCAG 2.1 rule coverage including real color-contrast computation. The hand-rolled rules from v1 remain as a supplementary fast path with dedup. The audit still does **not** exhaustively test keyboard navigation, focus management on SPA route changes, or screen-reader announcement quality — for those, surface the limitation and recommend pairing with manual VoiceOver/NVDA testing.
 
 ## When to Use
 
