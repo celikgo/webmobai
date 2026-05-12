@@ -421,14 +421,45 @@ export class PageAnalyzer {
           : null;
       const tti = lastLongTaskEnd ?? nav?.domContentLoadedEventEnd ?? fcp ?? null;
 
+      // INP — pulled from the observer's running max (init script keeps it
+      // updated on every interaction). Null if no interactions have
+      // happened yet, which is honest: INP only makes sense after the user
+      // has actually interacted.
+      const w = window as { __webmobai_longestInteraction?: number };
+      const inpRaw = w.__webmobai_longestInteraction;
+      const inp = inpRaw != null && inpRaw > 0 ? inpRaw : null;
+
+      // LCP element fingerprint — answers "what's the biggest thing above
+      // the fold?" so the caller knows what to optimize.
+      const lcpEntry = lcpEntries[lcpEntries.length - 1] as
+        | (PerformanceEntry & { element?: Element; size?: number; url?: string })
+        | undefined;
+      const lcpElement = lcpEntry?.element
+        ? {
+            tagName: lcpEntry.element.tagName.toLowerCase(),
+            id: lcpEntry.element.id || undefined,
+            classList: lcpEntry.element.className?.toString() || undefined,
+            src:
+              (lcpEntry.element as HTMLImageElement).src ||
+              lcpEntry.url ||
+              undefined,
+            text:
+              (lcpEntry.element as HTMLElement).innerText?.slice(0, 80) ||
+              undefined,
+            size: lcpEntry.size,
+          }
+        : null;
+
       return {
         lcp,
         fcp,
         cls: cls || null,
         tti,
+        inp,
         ttfb: nav?.responseStart ?? null,
         domContentLoaded: nav?.domContentLoadedEventEnd ?? null,
         loadComplete: nav?.loadEventEnd ?? null,
+        lcpElement,
       };
     });
 

@@ -12,9 +12,23 @@ export interface PerformanceMetrics {
   fcp: number | null;
   cls: number | null;
   tti: number | null;
+  inp: number | null;
   ttfb: number | null;
   domContentLoaded: number | null;
   loadComplete: number | null;
+  /**
+   * Largest Contentful Paint element fingerprint (when available). Helps a
+   * caller answer "what's the biggest thing on the page above the fold?"
+   * without re-running an LCP observer themselves.
+   */
+  lcpElement?: {
+    tagName: string;
+    id?: string;
+    classList?: string;
+    src?: string;
+    text?: string;
+    size?: number;
+  } | null;
 }
 
 export interface ConsoleError {

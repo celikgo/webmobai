@@ -401,9 +401,11 @@ async function run() {
           fcp: null,
           cls: null,
           tti: null,
+          inp: null,
           ttfb: null,
           domContentLoaded: null,
           loadComplete: null,
+          lcpElement: null,
         });
 
     const passed = results.filter((r) => r.status === "pass").length;

@@ -27,6 +27,39 @@ const BROWSERS: Record<BrowserName, BrowserType> = {
   webkit,
 };
 
+/**
+ * Chrome DevTools-style network preset values. Numbers mirror the
+ * built-in presets in Chrome DevTools so users get familiar behavior.
+ *
+ *   throughput is in bytes/sec; latency in milliseconds.
+ */
+const NETWORK_PRESETS = {
+  "slow-3g": {
+    offline: false,
+    latency: 2000,
+    downloadThroughput: (500 * 1024) / 8, // 500 Kbps
+    uploadThroughput: (500 * 1024) / 8,
+  },
+  "fast-3g": {
+    offline: false,
+    latency: 562.5,
+    downloadThroughput: (1.5 * 1024 * 1024) / 8, // 1.5 Mbps
+    uploadThroughput: (750 * 1024) / 8,
+  },
+  "slow-4g": {
+    offline: false,
+    latency: 400,
+    downloadThroughput: (4 * 1024 * 1024) / 8, // 4 Mbps
+    uploadThroughput: (3 * 1024 * 1024) / 8,
+  },
+  offline: {
+    offline: true,
+    latency: 0,
+    downloadThroughput: 0,
+    uploadThroughput: 0,
+  },
+} as const;
+
 export function defaultSessionDir(): string {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return join(tmpdir(), `webmobai-${id}`);
@@ -56,6 +89,9 @@ export class BrowserManager {
   // current page elements by similarity to the fingerprint and propose
   // alternative selectors back to the caller.
   private selectorSnapshots = new Map<string, ElementSnapshot>();
+  // CDP session held across throttle calls so emulation persists; detaching
+  // voids the settings.
+  private _throttleCdp: import("playwright").CDPSession | null = null;
   readonly sessionDir: string;
 
   constructor(baseDir: string = defaultSessionDir()) {
@@ -196,10 +232,14 @@ export class BrowserManager {
       );
     }
 
-    // Subscribe to long-task entries before any page script runs so we can
-    // compute TTI later. The collector stashes entries on the window so the
-    // analyzer can read them via getEntriesByType("longtask") even without
-    // its own observer.
+    // Subscribe to long-task and event-timing entries before any page
+    // script runs so we can compute TTI and INP later. Each observer
+    // populates the buffer that getEntriesByType reads from. Without this,
+    // those entries are dropped on the floor.
+    //
+    // We also expose `__webmobai_longestInteraction` on the window so INP
+    // computation has somewhere to read the worst observed interaction
+    // duration from once the page is settled.
     await this.context.addInitScript(() => {
       try {
         new PerformanceObserver(() => {}).observe({
@@ -208,6 +248,25 @@ export class BrowserManager {
         });
       } catch {
         // longtask not supported (e.g., Firefox/WebKit) — silently skip.
+      }
+
+      try {
+        // INP is the worst (or near-worst) interaction's full latency.
+        // Spec uses the 98th percentile; we approximate with max over the
+        // session, then the page-analyzer takes the max here.
+        (window as { __webmobai_longestInteraction?: number }).__webmobai_longestInteraction = 0;
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const e = entry as PerformanceEntry & { interactionId?: number; duration: number };
+            if (!e.interactionId) continue;
+            const w = window as { __webmobai_longestInteraction?: number };
+            if (e.duration > (w.__webmobai_longestInteraction ?? 0)) {
+              w.__webmobai_longestInteraction = e.duration;
+            }
+          }
+        }).observe({ type: "event", durationThreshold: 16, buffered: true } as PerformanceObserverInit);
+      } catch {
+        // event-timing not supported on this browser — INP will report null.
       }
     });
 
@@ -273,6 +332,74 @@ export class BrowserManager {
     });
     const title = await this.page.title();
     return { title, url: this.page.url() };
+  }
+
+  /**
+   * Throttle network conditions. Offline uses Playwright's BrowserContext
+   * setOffline API (works across all engines). Bandwidth/latency presets
+   * use CDP Network.emulateNetworkConditions (Chromium only) — Firefox and
+   * WebKit silently ignore those, which is at least honest.
+   *
+   * The CDP session is kept alive on `this` because detaching voids the
+   * emulation. setNetworkThrottle(null) tears it down and re-enables
+   * online.
+   */
+  async setNetworkThrottle(
+    preset: "slow-3g" | "fast-3g" | "slow-4g" | "offline" | null,
+  ): Promise<void> {
+    if (!this._page) throw new Error("Browser not launched.");
+    const context = this.page.context();
+
+    if (preset === null) {
+      await context.setOffline(false);
+      if (this._throttleCdp) {
+        try {
+          await this._throttleCdp.send("Network.emulateNetworkConditions", {
+            offline: false,
+            latency: 0,
+            downloadThroughput: -1,
+            uploadThroughput: -1,
+          });
+        } catch {
+          // ignore — cdp session may already be detached
+        }
+      }
+      return;
+    }
+
+    if (preset === "offline") {
+      await context.setOffline(true);
+      logger.info("Network throttled to offline (via setOffline)");
+      return;
+    }
+
+    // Bandwidth/latency emulation via CDP. Reuse a single session per
+    // BrowserManager — detaching loses the settings.
+    if (!this._throttleCdp) {
+      this._throttleCdp = await context.newCDPSession(this._page);
+      await this._throttleCdp.send("Network.enable");
+    }
+    const settings = NETWORK_PRESETS[preset];
+    await this._throttleCdp.send("Network.emulateNetworkConditions", settings);
+    logger.info(`Network throttled to ${preset}`);
+  }
+
+  /**
+   * Throttle CPU by a slowdown factor. 4 means "render at 1/4 CPU speed",
+   * mirroring Lighthouse's mobile profile. Pass 1 (or null) to reset.
+   * Chromium-only.
+   */
+  async setCpuThrottle(slowdownFactor: number | null): Promise<void> {
+    if (!this._page) throw new Error("Browser not launched.");
+    const client = await this.page.context().newCDPSession(this._page);
+    try {
+      await client.send("Emulation.setCPUThrottlingRate", {
+        rate: slowdownFactor ?? 1,
+      });
+      logger.info(`CPU throttle rate ${slowdownFactor ?? 1}x`);
+    } finally {
+      await client.detach().catch(() => {});
+    }
   }
 
   async click(selector: string): Promise<void> {
@@ -436,6 +563,13 @@ export class BrowserManager {
     // signatures).
     const { resetRoutes } = await import("../tools/route-tools.js");
     resetRoutes();
+
+    // Detach any held CDP sessions before closing the context, otherwise
+    // the close call hangs waiting on the protocol.
+    if (this._throttleCdp) {
+      await this._throttleCdp.detach().catch(() => {});
+      this._throttleCdp = null;
+    }
 
     // Stop tracing before closing the context, otherwise the in-flight
     // trace is discarded.
