@@ -1,8 +1,8 @@
 {
   "name": "webmobai",
   "private": true,
-  "version": "1.1.0",
-  "description": "WebMobAI — Autonomous Web QA Desktop Application powered by Claude + Playwright",
+  "version": "1.2.0",
+  "description": "WebMobAI — AI-leveraged end-to-end web testing framework powered by Claude + Playwright",
   "type": "module",
   "scripts": {
     "dev": "vite",

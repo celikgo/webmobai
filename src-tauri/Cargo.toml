@@ -1,6 +1,6 @@
 [package]
 name = "webmobai"
-version = "1.1.0"
+version = "1.2.0"
 description = "WebMobAI — Autonomous Web QA Desktop Application"
 authors = ["WebMobAI"]
 edition = "2021"

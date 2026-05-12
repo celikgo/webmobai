@@ -5,7 +5,7 @@ import { createMcpServer } from "./server.js";
 import { logger } from "./utils/logger.js";
 
 async function main() {
-  logger.info("Starting WebMobAI MCP Server v1.0.0");
+  logger.info("Starting WebMobAI MCP Server v1.2.0");
 
   const { server } = createMcpServer();
   const transport = new StdioServerTransport();

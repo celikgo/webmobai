@@ -1,6 +1,6 @@
 {
   "name": "webmobai-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "WebMobAI MCP Server — Autonomous web QA testing powered by Claude AI + Playwright. Launch a visible browser, explore websites, run accessibility audits, measure performance, and generate test reports.",
   "type": "module",
   "main": "dist/index.js",

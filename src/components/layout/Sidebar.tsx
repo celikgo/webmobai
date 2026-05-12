@@ -95,7 +95,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
         <div className="mt-auto">
           <Badge variant="outline" className="text-[9px] px-1 py-0.5">
-            v1.0
+            v1.2
           </Badge>
         </div>
       </aside>
