@@ -1,4 +1,5 @@
 import type { BrowserManager } from "../playwright/browser-manager.js";
+import { buildFailureTriage } from "../utils/failure-triage.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -209,7 +210,28 @@ export async function handleAssertionTool(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`Assertion failed (${name}): ${msg}`);
-    return fail(`FAIL — ${msg}`);
+
+    // For selector-based assertions, ask BrowserManager for the
+    // self-healing diagnostic (prior snapshot + similar elements +
+    // suggested selectors). Then append the page-state triage bundle
+    // (URL, console/network errors, screenshot).
+    let extra = "";
+    const selector = args.selector as string | undefined;
+    if (selector && /assert_(visible|hidden|text|count)/.test(name)) {
+      try {
+        const diag = await browserManager.describeSelectorFailure(
+          selector,
+          name.replace("webmobai_", ""),
+          msg.split("\n")[0] ?? "assertion failed",
+        );
+        extra += "\n\n" + diag;
+      } catch {
+        // ignore — diagnostic is best-effort
+      }
+    }
+    extra += await buildFailureTriage(browserManager).catch(() => "");
+
+    return fail(`FAIL — ${msg}${extra}`);
   }
 }
 

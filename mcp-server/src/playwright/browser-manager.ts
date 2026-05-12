@@ -13,6 +13,11 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { logger } from "../utils/logger.js";
 import type { ConsoleError } from "../types.js";
+import {
+  type ElementSnapshot,
+  findSimilarElements,
+  snapshotElement,
+} from "./element-snapshot.js";
 
 export type BrowserName = "chromium" | "firefox" | "webkit";
 
@@ -46,6 +51,11 @@ export class BrowserManager {
   private tracePath: string;
   private traceEnabled = false;
   private screenshotCounter = 0;
+  // Self-healing infra: when a selector succeeds, we record a fingerprint
+  // of the element. When that same selector later misses, we can rank
+  // current page elements by similarity to the fingerprint and propose
+  // alternative selectors back to the caller.
+  private selectorSnapshots = new Map<string, ElementSnapshot>();
   readonly sessionDir: string;
 
   constructor(baseDir: string = defaultSessionDir()) {
@@ -267,13 +277,107 @@ export class BrowserManager {
 
   async click(selector: string): Promise<void> {
     logger.info(`Clicking: ${selector}`);
-    await this.page.click(selector, { timeout: 10000 });
+    const priorSnap = await snapshotElement(this.page, selector);
+    try {
+      await this.page.click(selector, { timeout: 10000 });
+    } catch (err) {
+      throw await this.buildSelectorError(selector, "click", err);
+    }
+    // Remember the snapshot for future self-healing on this selector.
+    if (priorSnap) this.selectorSnapshots.set(selector, priorSnap);
     await this.page.waitForLoadState("domcontentloaded").catch(() => {});
   }
 
   async type(selector: string, text: string): Promise<void> {
     logger.info(`Typing into: ${selector}`);
-    await this.page.fill(selector, text);
+    const priorSnap = await snapshotElement(this.page, selector);
+    try {
+      await this.page.fill(selector, text);
+    } catch (err) {
+      throw await this.buildSelectorError(selector, "type", err);
+    }
+    if (priorSnap) this.selectorSnapshots.set(selector, priorSnap);
+  }
+
+  /**
+   * Build a self-healing diagnostic for a failed selector op. Returns an
+   * Error whose message embeds:
+   *   - the original Playwright failure reason
+   *   - the prior snapshot of this selector (if we ever saw it succeed)
+   *   - up to 5 candidate elements scored by similarity, with suggested
+   *     selectors the caller can retry with
+   *
+   * Callers (MCP tool handlers, scenario runner, Claude) read this and
+   * decide whether to retry with a different selector.
+   */
+  private async buildSelectorError(
+    selector: string,
+    operation: string,
+    underlyingErr: unknown,
+  ): Promise<Error> {
+    const baseMsg =
+      underlyingErr instanceof Error
+        ? underlyingErr.message
+        : String(underlyingErr);
+    const prior = this.selectorSnapshots.get(selector);
+    const candidates = prior
+      ? await findSimilarElements(this.page, prior, 5).catch(() => [])
+      : [];
+
+    const lines = [
+      `Selector "${selector}" failed during ${operation}: ${baseMsg.split("\n")[0]}`,
+    ];
+
+    if (prior) {
+      lines.push("");
+      lines.push("Prior snapshot of this selector (last time it worked):");
+      lines.push(
+        `  ${prior.tag}${prior.testid ? `[data-testid=${prior.testid}]` : ""} role=${prior.role ?? "?"} text="${prior.text.slice(0, 60)}"`,
+      );
+    }
+
+    if (candidates.length > 0) {
+      lines.push("");
+      lines.push(`Suggested replacements (${candidates.length}, ranked by similarity):`);
+      for (const c of candidates) {
+        lines.push(
+          `  [score ${c.score}] ${c.suggestedSelector}  — ${c.snapshot.tag} text="${c.snapshot.text.slice(0, 50)}"`,
+        );
+      }
+      lines.push("");
+      lines.push(
+        "Retry with one of the suggested selectors above.",
+      );
+    } else if (prior) {
+      lines.push("");
+      lines.push(
+        "No similar elements found — the page may have navigated away or the element was removed.",
+      );
+    }
+
+    return new Error(lines.join("\n"));
+  }
+
+  /**
+   * Public API for callers (assertion tools, scenario runner) that catch
+   * their own selector failure and want a self-healing diagnostic string.
+   * Returns plain text (already formatted) suitable for tool response.
+   */
+  async describeSelectorFailure(
+    selector: string,
+    operation: string,
+    underlying: string,
+  ): Promise<string> {
+    const err = await this.buildSelectorError(selector, operation, new Error(underlying));
+    return err.message;
+  }
+
+  /**
+   * Returns the recorded snapshot for a selector, if any. Used by tests and
+   * by the scenario runner to verify self-healing recorded a fingerprint.
+   */
+  getSelectorSnapshot(selector: string): ElementSnapshot | undefined {
+    return this.selectorSnapshots.get(selector);
   }
 
   async scroll(direction: "down" | "up" = "down", amount: number = 500): Promise<void> {
