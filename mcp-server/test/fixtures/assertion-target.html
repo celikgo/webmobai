@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Assertion target</title>
+</head>
+<body>
+  <h1 id="title">Hello, world</h1>
+  <div data-testid="banner" style="display:none">Hidden banner</div>
+  <ul id="items">
+    <li>One</li>
+    <li>Two</li>
+    <li>Three</li>
+  </ul>
+  <button id="reveal" onclick="document.querySelector('[data-testid=banner]').style.display='block'">
+    Reveal
+  </button>
+
+  <script>
+    // Reveal a delayed element 200ms after page load — tests retry/auto-wait.
+    setTimeout(() => {
+      const el = document.createElement("p");
+      el.id = "delayed";
+      el.textContent = "Late arrival";
+      document.body.appendChild(el);
+    }, 200);
+  </script>
+</body>
+</html>

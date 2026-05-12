@@ -22,6 +22,15 @@ import {
   getReportingToolDefinitions,
   handleReportingTool,
 } from "./tools/reporting-tools.js";
+import {
+  getAssertionToolDefinitions,
+  handleAssertionTool,
+} from "./tools/assertion-tools.js";
+import {
+  getRouteToolDefinitions,
+  handleRouteTool,
+  resetRoutes,
+} from "./tools/route-tools.js";
 import { logger } from "./utils/logger.js";
 
 export function createMcpServer(): { server: Server; browserManager: BrowserManager } {
@@ -47,6 +56,8 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
       ...getTestingToolDefinitions(),
       ...getAccessibilityToolDefinitions(),
       ...getReportingToolDefinitions(),
+      ...getAssertionToolDefinitions(),
+      ...getRouteToolDefinitions(),
     ];
     return { tools };
   });
@@ -60,6 +71,8 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
     const testingTools = getTestingToolDefinitions().map((t) => t.name);
     const a11yTools = getAccessibilityToolDefinitions().map((t) => t.name);
     const reportingTools = getReportingToolDefinitions().map((t) => t.name);
+    const assertionTools = getAssertionToolDefinitions().map((t) => t.name);
+    const routeTools = getRouteToolDefinitions().map((t) => t.name);
 
     if (browserTools.includes(name)) {
       return handleBrowserTool(name, args as Record<string, unknown>, browserManager);
@@ -107,6 +120,34 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
       return handleReportingTool(name, args as Record<string, unknown>, browserManager);
     }
 
+    if (assertionTools.includes(name)) {
+      if (!browserManager.isLaunched) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Browser is not launched. Call webmobai_launch_browser first.",
+            },
+          ],
+        };
+      }
+      return handleAssertionTool(name, args as Record<string, unknown>, browserManager);
+    }
+
+    if (routeTools.includes(name)) {
+      if (!browserManager.isLaunched) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Browser is not launched. Call webmobai_launch_browser first.",
+            },
+          ],
+        };
+      }
+      return handleRouteTool(name, args as Record<string, unknown>, browserManager);
+    }
+
     return {
       content: [
         { type: "text" as const, text: `Unknown tool: ${name}` },
@@ -146,6 +187,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
   // Handle server shutdown
   server.onclose = async () => {
     logger.info("MCP server shutting down...");
+    resetRoutes();
     if (browserManager.isLaunched) {
       await browserManager.close();
     }

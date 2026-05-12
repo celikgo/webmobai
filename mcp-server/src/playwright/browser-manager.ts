@@ -223,6 +223,11 @@ export class BrowserManager {
 
   async close(): Promise<void> {
     logger.info("Closing browser...");
+    // Lazy import to avoid a circular dependency between BrowserManager and
+    // the route tools (which reference BrowserManager in their handler
+    // signatures).
+    const { resetRoutes } = await import("../tools/route-tools.js");
+    resetRoutes();
     if (this.context) {
       await this.context.close();
     }
@@ -232,6 +237,8 @@ export class BrowserManager {
     this._page = null;
     this.context = null;
     this.browser = null;
+    this.consoleErrors = [];
+    this.networkErrors = [];
     logger.info("Browser closed");
   }
 
