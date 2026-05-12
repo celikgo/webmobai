@@ -6,10 +6,21 @@ export function getBrowserToolDefinitions() {
     {
       name: "webmobai_launch_browser",
       description:
-        "Launch an isolated Chromium browser in visible (headed) mode. Must be called before any other browser operation. Creates a fresh browser context with no cookies, cache, or user profiles.",
+        "Launch an isolated browser in visible (headed) mode. Must be called before any other browser operation. Creates a fresh context with no cookies, cache, or user profiles. Supports Chromium, Firefox, and WebKit, and Playwright device presets (iPhone 13, Pixel 5, etc.) for mobile emulation including touch events and devicePixelRatio.",
       inputSchema: {
         type: "object" as const,
         properties: {
+          browser: {
+            type: "string",
+            enum: ["chromium", "firefox", "webkit"],
+            description: "Browser engine to launch (default: chromium)",
+            default: "chromium",
+          },
+          device: {
+            type: "string",
+            description:
+              "Optional Playwright device preset name (e.g., 'iPhone 13', 'Pixel 5', 'iPad Pro 11'). Overrides viewport/userAgent with the device's profile. See https://playwright.dev/docs/emulation#devices for the full list.",
+          },
           headless: {
             type: "boolean",
             description: "Run in headless mode (default: false — visible browser window)",
@@ -17,12 +28,14 @@ export function getBrowserToolDefinitions() {
           },
           viewport_width: {
             type: "number",
-            description: "Viewport width in pixels (default: 1280)",
+            description:
+              "Viewport width in pixels (default: 1280). Ignored when `device` is set.",
             default: 1280,
           },
           viewport_height: {
             type: "number",
-            description: "Viewport height in pixels (default: 720)",
+            description:
+              "Viewport height in pixels (default: 720). Ignored when `device` is set.",
             default: 720,
           },
           record_video: {
@@ -157,6 +170,10 @@ export async function handleBrowserTool(
         if (browserManager.isLaunched) {
           return text("Browser is already running. Close it first to relaunch.");
         }
+        const browserName =
+          (args.browser as "chromium" | "firefox" | "webkit" | undefined) ??
+          "chromium";
+        const device = args.device as string | undefined;
         await browserManager.launch({
           headless: (args.headless as boolean) ?? false,
           viewport: {
@@ -164,10 +181,15 @@ export async function handleBrowserTool(
             height: (args.viewport_height as number) ?? 720,
           },
           recordVideo: (args.record_video as boolean) ?? true,
+          browser: browserName,
+          device,
         });
+        const desc = device
+          ? `${browserName} emulating ${device}`
+          : browserName;
         return text(
-          "Browser launched successfully in visible mode.\n" +
-            "A Chromium window is now open. You can interact with it using the other webmobai tools.\n" +
+          `Browser launched successfully (${desc}).\n` +
+            "A window is now open. You can interact with it using the other webmobai tools.\n" +
             "The browser has a clean profile — no cookies, cache, or extensions.",
         );
       }

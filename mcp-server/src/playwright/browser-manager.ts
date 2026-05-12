@@ -1,9 +1,26 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import {
+  chromium,
+  firefox,
+  webkit,
+  devices,
+  type Browser,
+  type BrowserContext,
+  type Page,
+  type BrowserType,
+} from "playwright";
 import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { logger } from "../utils/logger.js";
 import type { ConsoleError } from "../types.js";
+
+export type BrowserName = "chromium" | "firefox" | "webkit";
+
+const BROWSERS: Record<BrowserName, BrowserType> = {
+  chromium,
+  firefox,
+  webkit,
+};
 
 export function defaultSessionDir(): string {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -46,40 +63,92 @@ export class BrowserManager {
     headless?: boolean;
     viewport?: { width: number; height: number };
     recordVideo?: boolean;
+    browser?: BrowserName;
+    device?: string;
   }): Promise<void> {
     const {
       headless = false,
       viewport = { width: 1280, height: 720 },
       recordVideo = false,
+      browser: browserName = "chromium",
+      device,
     } = options ?? {};
 
     await mkdir(this.screenshotDir, { recursive: true });
     await mkdir(this.recordingDir, { recursive: true });
 
-    logger.info("Launching Chromium browser...");
+    const browserType = BROWSERS[browserName];
+    if (!browserType) {
+      throw new Error(
+        `Unknown browser "${browserName}". Use one of: chromium, firefox, webkit.`,
+      );
+    }
 
-    this.browser = await chromium.launch({
+    logger.info(`Launching ${browserName} browser...`);
+
+    // Chromium-only launch args; Firefox/WebKit ignore these silently in
+    // Playwright but we keep them isolated to be tidy.
+    const launchArgs =
+      browserName === "chromium"
+        ? [
+            "--disable-blink-features=AutomationControlled",
+            "--no-first-run",
+            "--no-default-browser-check",
+          ]
+        : undefined;
+
+    this.browser = await browserType.launch({
       headless,
-      args: [
-        "--disable-blink-features=AutomationControlled",
-        "--no-first-run",
-        "--no-default-browser-check",
-      ],
+      args: launchArgs,
     });
 
+    // Device preset (Pixel 5, iPhone 13, etc.) supplies viewport, UA,
+    // devicePixelRatio, isMobile, hasTouch — the bits that make "mobile
+    // emulation" meaningfully different from just resizing.
+    let deviceContextOptions: Parameters<Browser["newContext"]>[0] = {};
+    if (device) {
+      const preset = devices[device];
+      if (!preset) {
+        throw new Error(
+          `Unknown device "${device}". See Playwright's device list (devices["iPhone 13"], etc.).`,
+        );
+      }
+      deviceContextOptions = preset;
+      logger.info(
+        `Emulating device "${device}" (${preset.viewport?.width}x${preset.viewport?.height}, mobile=${preset.isMobile})`,
+      );
+    }
+
     const contextOptions: Parameters<Browser["newContext"]>[0] = {
-      viewport,
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      locale: "en-US",
-      timezoneId: "America/New_York",
+      ...deviceContextOptions,
+      // Explicit viewport overrides the device preset only when no device is
+      // configured — otherwise the device's viewport wins (you want the
+      // iPhone 13's 390x844, not 1280x720 with iPhone UA).
+      ...(device ? {} : { viewport }),
+      // UA precedence:
+      //   1. Device preset's UA (already in deviceContextOptions, takes
+      //      effect via the spread above)
+      //   2. For chromium specifically, our anti-automation desktop UA so
+      //      sites don't bucket us as a headless bot
+      //   3. Otherwise, let Playwright use the browser's native UA so e.g.
+      //      Firefox shows as Firefox and WebKit as Safari
+      ...(device || browserName !== "chromium"
+        ? {}
+        : {
+            userAgent:
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          }),
+      locale: deviceContextOptions.locale ?? "en-US",
+      timezoneId: deviceContextOptions.timezoneId ?? "America/New_York",
       ignoreHTTPSErrors: true,
     };
 
     if (recordVideo) {
       contextOptions.recordVideo = {
         dir: this.recordingDir,
-        size: viewport,
+        // Use the resolved viewport (device-derived or explicit) for video
+        // sizing so frames aren't letterboxed.
+        size: contextOptions.viewport ?? viewport,
       };
     }
 
@@ -148,7 +217,10 @@ export class BrowserManager {
       }
     });
 
-    logger.info(`Browser launched (headed: ${!headless}, viewport: ${viewport.width}x${viewport.height})`);
+    const finalViewport = contextOptions.viewport ?? viewport;
+    logger.info(
+      `Browser launched (${browserName}${device ? `/${device}` : ""}, headed: ${!headless}, viewport: ${finalViewport?.width}x${finalViewport?.height})`,
+    );
   }
 
   async navigate(url: string): Promise<{ title: string; url: string }> {
