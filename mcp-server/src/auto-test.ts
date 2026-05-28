@@ -14,9 +14,16 @@ import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { BrowserManager, defaultSessionDir } from "./playwright/browser-manager.js";
 import { PageAnalyzer } from "./playwright/page-analyzer.js";
-import { generateHtmlReport } from "./utils/report-generator.js";
+import { generateHtmlReport, generatePdfReport } from "./utils/report-generator.js";
 import { generateJunitReport } from "./utils/junit-generator.js";
-import { appendRunHistory, type RunHistoryEntry } from "./utils/run-history.js";
+import {
+  appendRunHistory,
+  detectRegressions,
+  readRunHistory,
+  type RunHistoryEntry,
+} from "./utils/run-history.js";
+import { isAiEnabled } from "./ai/client.js";
+import { summarizeAudit } from "./ai/audit-summarizer.js";
 import type { TestReportData, TestResult, AccessibilityIssue } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -426,8 +433,48 @@ async function run() {
       pagesExplored,
     };
 
+    // Sprint 15: optional Claude-generated executive summary. Opt-in via
+    // WEBMOBAI_ANTHROPIC_API_KEY — when absent we silently skip. Failures
+    // here must not abort the run, so we catch and emit a soft action.
+    if (isAiEnabled()) {
+      action("info", "Asking Claude for an executive summary…", "running");
+      try {
+        const aiSummary = await summarizeAudit({
+          url,
+          a11y: a11yIssues,
+          perf: finalPerf,
+          consoleErrors: browser.getConsoleErrors(),
+          testResults: results,
+        });
+        reportData.aiSummary = aiSummary;
+        action("info", "Claude summary attached to report", "success");
+      } catch (err) {
+        action(
+          "info",
+          `Skipped AI summary: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+      }
+    }
+
     const reportPath = await generateHtmlReport(reportData, sessionDir);
+    reportData.reportPath = reportPath;
     action("report", `HTML report generated: ${reportPath}`, "success");
+
+    // Sprint 16: render the HTML to PDF too. Uses an isolated headless
+    // Chromium so it doesn't disturb the user's still-open visible browser.
+    // PDF failures are non-fatal — the HTML report is the source of truth.
+    try {
+      const pdfPath = await generatePdfReport(reportPath, sessionDir);
+      reportData.pdfPath = pdfPath;
+      action("report", `PDF report generated: ${pdfPath}`, "success");
+    } catch (pdfErr) {
+      action(
+        "info",
+        `Skipped PDF report: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}`,
+        "error",
+      );
+    }
 
     const junitPath = await generateJunitReport(reportData, sessionDir);
     action(
@@ -463,6 +510,34 @@ async function run() {
         "error",
       );
     });
+
+    // Sprint 17: compute this-run-vs-historical-median comparison. We pass
+    // the full history (which now includes the entry we just appended) and
+    // detectRegressions filters by URL and excludes the current id itself.
+    try {
+      const history = await readRunHistory();
+      const comparison = detectRegressions(historyEntry, history);
+      if (comparison.baselineRuns >= 2) {
+        reportData.historicalComparison = comparison;
+        const regs = comparison.findings.filter(
+          (f) => f.severity === "regression",
+        );
+        if (regs.length > 0) {
+          action(
+            "info",
+            `Detected ${regs.length} regression(s) vs historical median`,
+            "error",
+            regs.map((r) => r.message).slice(0, 3).join(" | "),
+          );
+        }
+      }
+    } catch (cmpErr) {
+      action(
+        "info",
+        `Could not compute historical comparison: ${cmpErr instanceof Error ? cmpErr.message : String(cmpErr)}`,
+        "error",
+      );
+    }
 
     // Emit full report for the frontend
     emit("report", reportData as unknown as Record<string, unknown>);

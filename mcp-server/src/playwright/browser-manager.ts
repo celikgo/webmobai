@@ -73,6 +73,21 @@ export interface NetworkError {
   timestamp: number;
 }
 
+// Cap on retained console/network error entries. Long-running sessions (e.g.
+// crawls, monitoring) emit a steady stream of these; without a bound the arrays
+// grow unbounded and leak memory. We keep the most recent N — the failure-triage
+// bundle and reports only ever read the tail anyway.
+export const MAX_ERROR_ENTRIES = 500;
+
+// Append to a capped ring buffer: push the item, then drop the oldest entries
+// once the array exceeds the limit. Keeps the most recent MAX_ERROR_ENTRIES.
+export function pushBounded<T>(arr: T[], item: T): void {
+  arr.push(item);
+  if (arr.length > MAX_ERROR_ENTRIES) {
+    arr.splice(0, arr.length - MAX_ERROR_ENTRIES);
+  }
+}
+
 export class BrowserManager {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
@@ -89,6 +104,10 @@ export class BrowserManager {
   // current page elements by similarity to the fingerprint and propose
   // alternative selectors back to the caller.
   private selectorSnapshots = new Map<string, ElementSnapshot>();
+  // Sprint 17 idle-close: when set, a Node timer auto-closes the browser
+  // after that many ms with no `bumpIdleTimer()` call. Disabled by default.
+  private _idleTimeoutMs: number | null = null;
+  private _idleTimer: NodeJS.Timeout | null = null;
   // CDP session held across throttle calls so emulation persists; detaching
   // voids the settings.
   private _throttleCdp: import("playwright").CDPSession | null = null;
@@ -120,12 +139,60 @@ export class BrowserManager {
     return this._page !== null && !this._page.isClosed();
   }
 
+  /**
+   * Sprint 17: configure (or disable, with `null`) the idle-close timer.
+   * When set to a positive ms value and the browser is launched, a Node timer
+   * will call `close()` after that much inactivity. The MCP dispatcher bumps
+   * the timer after every tool call.
+   */
+  setIdleTimeout(ms: number | null): void {
+    this._idleTimeoutMs = ms != null && ms > 0 ? ms : null;
+    if (this._idleTimeoutMs == null) {
+      this.stopIdleTimer();
+    } else if (this.isLaunched) {
+      this.bumpIdleTimer();
+    }
+  }
+
+  /** Reset the idle countdown. Called after each tool execution. No-op if no timeout is configured. */
+  bumpIdleTimer(): void {
+    if (this._idleTimeoutMs == null) return;
+    this.stopIdleTimer();
+    this._idleTimer = setTimeout(() => {
+      logger.info(
+        `Closing browser after ${this._idleTimeoutMs}ms idle (no tool calls).`,
+      );
+      void this.close().catch((err) =>
+        logger.warn(
+          `Idle-close failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+    }, this._idleTimeoutMs);
+  }
+
+  private stopIdleTimer(): void {
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
+  }
+
+  get idleTimeoutMs(): number | null {
+    return this._idleTimeoutMs;
+  }
+
   async launch(options?: {
     headless?: boolean;
     viewport?: { width: number; height: number };
     recordVideo?: boolean;
     browser?: BrowserName;
     device?: string;
+    /**
+     * Sprint 17: auto-close the browser after this many ms of inactivity.
+     * Inactivity = no `bumpIdleTimer()` calls. The MCP dispatcher bumps after
+     * every tool call. Default disabled; pass a positive ms to enable.
+     */
+    idleTimeoutMs?: number;
   }): Promise<void> {
     const {
       headless = false,
@@ -133,6 +200,7 @@ export class BrowserManager {
       recordVideo = false,
       browser: browserName = "chromium",
       device,
+      idleTimeoutMs,
     } = options ?? {};
 
     await mkdir(this.screenshotDir, { recursive: true });
@@ -268,6 +336,40 @@ export class BrowserManager {
       } catch {
         // event-timing not supported on this browser — INP will report null.
       }
+
+      // Sprint 16: "load CLS" — cumulative layout shift frozen 3s after the
+      // load event. Without this, the running CLS keeps accumulating across
+      // session-long shifts (lazy carousels, hover-triggered reflows, etc.)
+      // and inflates well past what a real user's initial-load experience
+      // showed.
+      try {
+        type W = {
+          __webmobai_loadCls?: number;
+          __webmobai_loadClsFrozen?: boolean;
+        };
+        const w = window as W;
+        w.__webmobai_loadCls = 0;
+        w.__webmobai_loadClsFrozen = false;
+        new PerformanceObserver((list) => {
+          if (w.__webmobai_loadClsFrozen) return;
+          for (const entry of list.getEntries()) {
+            const e = entry as PerformanceEntry & {
+              hadRecentInput: boolean;
+              value: number;
+            };
+            if (!e.hadRecentInput) {
+              w.__webmobai_loadCls = (w.__webmobai_loadCls ?? 0) + e.value;
+            }
+          }
+        }).observe({ type: "layout-shift", buffered: true } as PerformanceObserverInit);
+        window.addEventListener("load", () => {
+          setTimeout(() => {
+            w.__webmobai_loadClsFrozen = true;
+          }, 3000);
+        });
+      } catch {
+        // layout-shift unsupported — clsAtLoad will report null.
+      }
     });
 
     this._page = await this.context.newPage();
@@ -276,7 +378,7 @@ export class BrowserManager {
     this._page.on("console", (msg) => {
       const type = msg.type();
       if (type === "error" || type === "warning") {
-        this.consoleErrors.push({
+        pushBounded(this.consoleErrors, {
           type: type as "error" | "warning",
           message: msg.text(),
           url: this._page?.url() ?? "",
@@ -286,7 +388,7 @@ export class BrowserManager {
     });
 
     this._page.on("pageerror", (err) => {
-      this.consoleErrors.push({
+      pushBounded(this.consoleErrors, {
         type: "error",
         message: err.message,
         url: this._page?.url() ?? "",
@@ -296,7 +398,7 @@ export class BrowserManager {
 
     // Capture failed network requests (404s, DNS failures, aborts, blocked).
     this._page.on("requestfailed", (req) => {
-      this.networkErrors.push({
+      pushBounded(this.networkErrors, {
         url: req.url(),
         method: req.method(),
         failure: req.failure()?.errorText ?? "unknown",
@@ -308,7 +410,7 @@ export class BrowserManager {
     // Also treat any non-2xx/3xx response as a network error worth surfacing.
     this._page.on("response", (res) => {
       if (res.status() >= 400) {
-        this.networkErrors.push({
+        pushBounded(this.networkErrors, {
           url: res.url(),
           method: res.request().method(),
           failure: `HTTP ${res.status()} ${res.statusText()}`,
@@ -322,6 +424,14 @@ export class BrowserManager {
     logger.info(
       `Browser launched (${browserName}${device ? `/${device}` : ""}, headed: ${!headless}, viewport: ${finalViewport?.width}x${finalViewport?.height})`,
     );
+
+    // Sprint 17: arm the idle-close timer if a timeout was requested.
+    if (idleTimeoutMs != null && idleTimeoutMs > 0) {
+      this.setIdleTimeout(idleTimeoutMs);
+      logger.info(
+        `Idle-close armed: ${idleTimeoutMs}ms of inactivity will end the session.`,
+      );
+    }
   }
 
   async navigate(url: string): Promise<{ title: string; url: string }> {
@@ -558,6 +668,9 @@ export class BrowserManager {
 
   async close(): Promise<void> {
     logger.info("Closing browser...");
+    // Cancel any pending idle-close so it doesn't fire after we've already
+    // torn the browser down (which would be a no-op but logs noisily).
+    this.stopIdleTimer();
     // Lazy import to avoid a circular dependency between BrowserManager and
     // the route tools (which reference BrowserManager in their handler
     // signatures).

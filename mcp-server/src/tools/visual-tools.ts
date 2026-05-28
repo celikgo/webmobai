@@ -22,7 +22,7 @@ export function getVisualToolDefinitions() {
     {
       name: "webmobai_visual_snapshot",
       description:
-        "Capture a screenshot and compare it pixel-by-pixel against a stored baseline. First call against a name saves the baseline; subsequent calls report diff stats. Mismatches write .actual and .diff PNGs alongside the baseline so users can see what changed. Tolerance: maxDiffPixels OR maxDiffPixelRatio (default 1%). Use `update_baseline: true` to overwrite an existing baseline (e.g., after an intentional UI change).",
+        "Capture a screenshot and compare it pixel-by-pixel against a stored baseline. First call against a name saves the baseline; subsequent calls report diff stats. Mismatches write .actual and .diff PNGs alongside the baseline so users can see what changed. Tolerance: maxDiffPixels OR maxDiffPixelRatio (default 1%). Use `update_baseline: true` to overwrite an existing baseline (e.g., after an intentional UI change) — the previous baseline is archived to `<name>.v<unix-ms>.png` (Sprint 16). Requires a launched browser.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -66,11 +66,56 @@ export function getVisualToolDefinitions() {
           update_baseline: {
             type: "boolean",
             description:
-              "Force-overwrite the baseline with the current screenshot. Use after intentional UI changes.",
+              "Force-overwrite the baseline with the current screenshot. Use after intentional UI changes. The prior baseline is archived to <name>.v<unix-ms>.png and can be listed/restored via the baseline-history tools.",
             default: false,
           },
         },
         required: ["name"],
+      },
+    },
+    {
+      name: "webmobai_visual_baseline_list_versions",
+      description:
+        "List archived versions of a visual baseline (Sprint 16). Each writeBaseline / update_baseline archives the previous PNG to <name>.v<unix-ms>.png; this tool surfaces them so you can roll back. No browser required.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          name: {
+            type: "string",
+            description:
+              "Snapshot name passed to webmobai_visual_snapshot — same forward-slash nesting.",
+          },
+          baseline_dir: {
+            type: "string",
+            description:
+              "Directory where baselines live. Must match what was used when the baseline was written.",
+          },
+        },
+        required: ["name", "baseline_dir"],
+      },
+    },
+    {
+      name: "webmobai_visual_baseline_restore_version",
+      description:
+        "Promote an archived baseline version to be the current baseline (Sprint 16). The currently-active baseline is itself archived first, so the swap is reversible. No browser required.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          name: {
+            type: "string",
+            description: "Snapshot name (same as webmobai_visual_snapshot).",
+          },
+          baseline_dir: {
+            type: "string",
+            description: "Directory where baselines live.",
+          },
+          timestamp: {
+            type: "number",
+            description:
+              "Unix-ms timestamp of the archived version to restore. Use webmobai_visual_baseline_list_versions to discover available timestamps.",
+          },
+        },
+        required: ["name", "baseline_dir", "timestamp"],
       },
     },
   ];
@@ -83,7 +128,60 @@ export async function handleVisualTool(
 ): Promise<{ content: { type: "text"; text: string }[] }> {
   try {
     switch (name) {
+      case "webmobai_visual_baseline_list_versions": {
+        const snapshotName = args.name as string;
+        const baselineDir = args.baseline_dir as string;
+        if (!snapshotName || !baselineDir) {
+          return text("`name` and `baseline_dir` are required.");
+        }
+        const store = new BaselineStore(baselineDir);
+        const versions = await store.listVersions(snapshotName);
+        if (versions.length === 0) {
+          return text(
+            `No archived versions for "${snapshotName}" in ${baselineDir}.\n(Versions appear after the first update_baseline / overwrite.)`,
+          );
+        }
+        const lines: string[] = [];
+        lines.push(
+          `# Archived versions of "${snapshotName}" (${versions.length})`,
+        );
+        lines.push("");
+        versions.forEach((v, i) => {
+          lines.push(
+            `${i + 1}. timestamp=${v.timestamp}  (${new Date(v.timestamp).toISOString()})\n   ${v.path}`,
+          );
+        });
+        lines.push("");
+        lines.push(
+          "Restore one with webmobai_visual_baseline_restore_version (pass the timestamp).",
+        );
+        return text(lines.join("\n"));
+      }
+
+      case "webmobai_visual_baseline_restore_version": {
+        const snapshotName = args.name as string;
+        const baselineDir = args.baseline_dir as string;
+        const timestamp = args.timestamp as number;
+        if (!snapshotName || !baselineDir || !Number.isFinite(timestamp)) {
+          return text(
+            "`name`, `baseline_dir`, and a numeric `timestamp` are required.",
+          );
+        }
+        const store = new BaselineStore(baselineDir);
+        const restored = await store.restoreVersion(snapshotName, timestamp);
+        return text(
+          `Restored baseline "${snapshotName}" from version ${timestamp}.\n` +
+            `Current baseline path: ${restored}\n` +
+            `(The previously-current baseline was archived first; nothing is lost.)`,
+        );
+      }
+
       case "webmobai_visual_snapshot": {
+        if (!browserManager.isLaunched) {
+          return text(
+            "Browser is not launched. Call webmobai_launch_browser first.",
+          );
+        }
         const snapshotName = args.name as string;
         const baselineDir =
           (args.baseline_dir as string | undefined) ??

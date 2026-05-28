@@ -1,7 +1,16 @@
-import { Accessibility, AlertCircle, AlertTriangle, Info } from "lucide-react";
+import {
+  Accessibility,
+  AlertCircle,
+  AlertTriangle,
+  Info,
+  ExternalLink,
+  Copy,
+} from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useSessionStore } from "@/stores/useSessionStore";
+import { toast } from "@/stores/useToastStore";
+import { copyToClipboard, openExternal } from "@/lib/utils";
 
 const impactColors = {
   critical: "destructive",
@@ -77,13 +86,43 @@ export function AccessibilityPanel() {
                         <Badge variant={impactColors[level]} className="text-[10px] shrink-0 mt-0.5">
                           {issue.rule}
                         </Badge>
-                        <p className="text-sm">{issue.description}</p>
+                        <p className="text-sm flex-1">{issue.description}</p>
+                        {issue.helpUrl && (
+                          <button
+                            type="button"
+                            title="Learn more (WCAG reference)"
+                            onClick={() => openExternal(issue.helpUrl)}
+                            className="shrink-0 mt-0.5 inline-flex items-center gap-1 text-[11px] text-primary hover:underline cursor-pointer"
+                          >
+                            Learn more
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                       {issue.nodes.length > 0 && (
-                        <div className="mt-1.5 text-xs font-mono text-muted-foreground bg-muted rounded px-2 py-1 overflow-x-auto">
+                        <div className="mt-1.5 text-xs font-mono text-muted-foreground bg-muted rounded px-2 py-1 overflow-x-auto space-y-0.5">
                           {issue.nodes.slice(0, 3).map((node, i) => (
-                            <div key={i} className="truncate">
-                              {node}
+                            <div
+                              key={i}
+                              className="group/node flex items-center gap-1.5"
+                            >
+                              <span className="truncate flex-1">{node}</span>
+                              <button
+                                type="button"
+                                title="Copy selector"
+                                onClick={async () => {
+                                  const ok = await copyToClipboard(node);
+                                  toast({
+                                    title: ok
+                                      ? "Selector copied"
+                                      : "Copy failed",
+                                    variant: ok ? "success" : "destructive",
+                                  });
+                                }}
+                                className="shrink-0 opacity-0 group-hover/node:opacity-100 transition-opacity text-muted-foreground hover:text-foreground cursor-pointer"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
                             </div>
                           ))}
                           {issue.nodes.length > 3 && (

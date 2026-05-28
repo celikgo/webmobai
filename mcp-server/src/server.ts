@@ -63,15 +63,141 @@ import {
   getDebugToolDefinitions,
   handleDebugTool,
 } from "./tools/debug-tools.js";
+import { getAiToolDefinitions, handleAiTool } from "./tools/ai-tools.js";
+import {
+  getLighthouseToolDefinitions,
+  handleLighthouseTool,
+} from "./tools/lighthouse-tools.js";
 import { logger } from "./utils/logger.js";
+
+type ToolResponse = { content: { type: "text"; text: string }[] };
+type ToolDefinition = { name: string; description: string; inputSchema: object };
+
+// One row per tool group. `handle` is normalized to (name, args, bm) — handlers
+// that don't actually use the browser (history, AI) ignore the third arg.
+// `requiresBrowser: true` means the dispatcher pre-checks `bm.isLaunched` and
+// returns the standard "browser not launched" message without invoking the
+// handler. The Sprint 15 refactor that replaced 11 copy-pasted guards with this
+// table lives here.
+interface ToolGroup {
+  definitions: () => ToolDefinition[];
+  handle: (
+    name: string,
+    args: Record<string, unknown>,
+    bm: BrowserManager,
+  ) => Promise<ToolResponse>;
+  requiresBrowser: boolean;
+}
+
+const BROWSER_NOT_LAUNCHED: ToolResponse = {
+  content: [
+    {
+      type: "text",
+      text: "Browser is not launched. Call webmobai_launch_browser first.",
+    },
+  ],
+};
 
 export function createMcpServer(): { server: Server; browserManager: BrowserManager } {
   const browserManager = new BrowserManager();
 
+  const groups: ToolGroup[] = [
+    // History reads disk-backed run logs — no browser needed.
+    {
+      definitions: getHistoryToolDefinitions,
+      handle: (name, args) => handleHistoryTool(name, args),
+      requiresBrowser: false,
+    },
+    // Browser-control tools launch / close the browser — guard would be circular.
+    {
+      definitions: getBrowserToolDefinitions,
+      handle: handleBrowserTool,
+      requiresBrowser: false,
+    },
+    {
+      definitions: getTestingToolDefinitions,
+      handle: handleTestingTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getAccessibilityToolDefinitions,
+      handle: handleAccessibilityTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getReportingToolDefinitions,
+      handle: handleReportingTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getAssertionToolDefinitions,
+      handle: handleAssertionTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getRouteToolDefinitions,
+      handle: handleRouteTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getScenarioToolDefinitions,
+      handle: handleScenarioTool,
+      requiresBrowser: true,
+    },
+    // Visual: webmobai_visual_snapshot needs a browser; the new (Sprint 16)
+    // baseline-history tools read/write disk only. The group flag is false and
+    // handleVisualTool guards the snapshot tool itself.
+    {
+      definitions: getVisualToolDefinitions,
+      handle: handleVisualTool,
+      requiresBrowser: false,
+    },
+    {
+      definitions: getPerfToolDefinitions,
+      handle: handlePerfTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getSecurityToolDefinitions,
+      handle: handleSecurityTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getSeoToolDefinitions,
+      handle: handleSeoTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getPwaToolDefinitions,
+      handle: handlePwaTool,
+      requiresBrowser: true,
+    },
+    {
+      definitions: getDebugToolDefinitions,
+      handle: handleDebugTool,
+      requiresBrowser: true,
+    },
+    // AI tools (Sprint 15). The group-level flag is false because one tool
+    // (`webmobai_explain_visual_diff`) operates on file paths and doesn't need
+    // a browser. The other two check `bm.isLaunched` internally.
+    {
+      definitions: getAiToolDefinitions,
+      handle: handleAiTool,
+      requiresBrowser: false,
+    },
+    // Lighthouse (Sprint 16) drives its own headless Chrome — never touches
+    // the caller's BrowserManager.
+    {
+      definitions: getLighthouseToolDefinitions,
+      handle: handleLighthouseTool,
+      requiresBrowser: false,
+    },
+  ];
+
   const server = new Server(
     {
       name: "webmobai",
-      version: "1.2.0",
+      version: "1.3.0",
     },
     {
       capabilities: {
@@ -81,230 +207,37 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
     },
   );
 
-  // Register tool listing
+  // Register tool listing — concatenate all group definitions.
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = [
-      ...getBrowserToolDefinitions(),
-      ...getTestingToolDefinitions(),
-      ...getAccessibilityToolDefinitions(),
-      ...getReportingToolDefinitions(),
-      ...getAssertionToolDefinitions(),
-      ...getRouteToolDefinitions(),
-      ...getHistoryToolDefinitions(),
-      ...getScenarioToolDefinitions(),
-      ...getVisualToolDefinitions(),
-      ...getPerfToolDefinitions(),
-      ...getSecurityToolDefinitions(),
-      ...getSeoToolDefinitions(),
-      ...getPwaToolDefinitions(),
-      ...getDebugToolDefinitions(),
-    ];
+    const tools = groups.flatMap((g) => g.definitions());
     return { tools };
   });
 
-  // Route tool calls to the right handler
+  // Route tool calls to the right handler. Walk the group table once; the first
+  // group containing the tool name wins. Pre-check `requiresBrowser` so we
+  // don't enter handlers that would crash on a null page.
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
     logger.info(`Tool call: ${name}`, args);
 
-    const browserTools = getBrowserToolDefinitions().map((t) => t.name);
-    const testingTools = getTestingToolDefinitions().map((t) => t.name);
-    const a11yTools = getAccessibilityToolDefinitions().map((t) => t.name);
-    const reportingTools = getReportingToolDefinitions().map((t) => t.name);
-    const assertionTools = getAssertionToolDefinitions().map((t) => t.name);
-    const routeTools = getRouteToolDefinitions().map((t) => t.name);
-    const historyTools = getHistoryToolDefinitions().map((t) => t.name);
-    const scenarioTools = getScenarioToolDefinitions().map((t) => t.name);
-    const visualTools = getVisualToolDefinitions().map((t) => t.name);
-    const perfTools = getPerfToolDefinitions().map((t) => t.name);
-    const securityTools = getSecurityToolDefinitions().map((t) => t.name);
-    const seoTools = getSeoToolDefinitions().map((t) => t.name);
-    const pwaTools = getPwaToolDefinitions().map((t) => t.name);
-    const debugTools = getDebugToolDefinitions().map((t) => t.name);
-
-    // History tools don't need a launched browser — they read from
-    // ~/.webmobai/history.json — so route them first, ahead of all the
-    // "browser must be launched" guards.
-    if (historyTools.includes(name)) {
-      return handleHistoryTool(name, args as Record<string, unknown>);
-    }
-
-    if (browserTools.includes(name)) {
-      return handleBrowserTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (testingTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
+    for (const group of groups) {
+      const names = group.definitions().map((t) => t.name);
+      if (!names.includes(name)) continue;
+      if (group.requiresBrowser && !browserManager.isLaunched) {
+        return BROWSER_NOT_LAUNCHED;
       }
-      return handleTestingTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (a11yTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleAccessibilityTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (reportingTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleReportingTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (assertionTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleAssertionTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (routeTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleRouteTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (scenarioTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleScenarioTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (visualTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleVisualTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (perfTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handlePerfTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (securityTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleSecurityTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (seoTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleSeoTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (pwaTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handlePwaTool(name, args as Record<string, unknown>, browserManager);
-    }
-
-    if (debugTools.includes(name)) {
-      if (!browserManager.isLaunched) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Browser is not launched. Call webmobai_launch_browser first.",
-            },
-          ],
-        };
-      }
-      return handleDebugTool(name, args as Record<string, unknown>, browserManager);
+      const response = await group.handle(
+        name,
+        args as Record<string, unknown>,
+        browserManager,
+      );
+      // Sprint 17 idle-close: any successful tool call resets the timer.
+      browserManager.bumpIdleTimer();
+      return response;
     }
 
     return {
-      content: [
-        { type: "text" as const, text: `Unknown tool: ${name}` },
-      ],
+      content: [{ type: "text" as const, text: `Unknown tool: ${name}` }],
     };
   });
 
@@ -379,4 +312,5 @@ const TESTING_GUIDE = `# WebMobAI Autonomous Web Testing Guide
 - **Performance**: get_performance_metrics
 - **Reporting**: test_responsive, add_test_result, generate_report
 - **Advanced**: evaluate (run JS), wait_for, hover, select_option, press_key, go_back
+- **AI (opt-in via WEBMOBAI_ANTHROPIC_API_KEY)**: explain_visual_diff, summarize_audit, generate_scenario_from_prompt
 `;

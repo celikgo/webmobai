@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type {
   SessionStatus,
   SessionConfig,
@@ -17,7 +18,6 @@ interface SessionState {
   currentUrl: string;
   report: TestReport | null;
   mcpServer: McpServerStatus;
-  wsConnected: boolean;
 
   // Actions
   setStatus: (status: SessionStatus) => void;
@@ -28,7 +28,6 @@ interface SessionState {
   setCurrentUrl: (url: string) => void;
   setReport: (report: TestReport | null) => void;
   setMcpServer: (status: McpServerStatus) => void;
-  setWsConnected: (connected: boolean) => void;
   reset: () => void;
 }
 
@@ -48,47 +47,58 @@ const defaultConfig: SessionConfig = {
   ],
 };
 
-export const useSessionStore = create<SessionState>((set) => ({
-  status: "idle",
-  config: defaultConfig,
-  actions: [],
-  screenshots: [],
-  currentUrl: "",
-  report: null,
-  mcpServer: { running: false, port: 3100, pid: null },
-  wsConnected: false,
-
-  setStatus: (status) => set({ status }),
-  setConfig: (config) =>
-    set((state) => ({ config: { ...state.config, ...config } })),
-  addAction: (action) =>
-    set((state) => ({
-      actions: [
-        ...state.actions,
-        { ...action, id: generateId(), timestamp: Date.now() },
-      ],
-    })),
-  updateAction: (id, update) =>
-    set((state) => ({
-      actions: state.actions.map((a) => (a.id === id ? { ...a, ...update } : a)),
-    })),
-  addScreenshot: (screenshot) =>
-    set((state) => ({
-      screenshots: [
-        ...state.screenshots,
-        { ...screenshot, id: generateId(), timestamp: Date.now() },
-      ],
-    })),
-  setCurrentUrl: (currentUrl) => set({ currentUrl }),
-  setReport: (report) => set({ report }),
-  setMcpServer: (mcpServer) => set({ mcpServer }),
-  setWsConnected: (wsConnected) => set({ wsConnected }),
-  reset: () =>
-    set({
+// Only the Configuration-panel settings (`config`) are persisted across
+// restarts. Live run artifacts — actions, screenshots, report — are not, since
+// screenshots live in a per-session temp dir that is gone on the next launch.
+export const useSessionStore = create<SessionState>()(
+  persist(
+    (set) => ({
       status: "idle",
+      config: defaultConfig,
       actions: [],
       screenshots: [],
       currentUrl: "",
       report: null,
+      mcpServer: { running: false, port: 3100, pid: null },
+
+      setStatus: (status) => set({ status }),
+      setConfig: (config) =>
+        set((state) => ({ config: { ...state.config, ...config } })),
+      addAction: (action) =>
+        set((state) => ({
+          actions: [
+            ...state.actions,
+            { ...action, id: generateId(), timestamp: Date.now() },
+          ],
+        })),
+      updateAction: (id, update) =>
+        set((state) => ({
+          actions: state.actions.map((a) =>
+            a.id === id ? { ...a, ...update } : a,
+          ),
+        })),
+      addScreenshot: (screenshot) =>
+        set((state) => ({
+          screenshots: [
+            ...state.screenshots,
+            { ...screenshot, id: generateId(), timestamp: Date.now() },
+          ],
+        })),
+      setCurrentUrl: (currentUrl) => set({ currentUrl }),
+      setReport: (report) => set({ report }),
+      setMcpServer: (mcpServer) => set({ mcpServer }),
+      reset: () =>
+        set({
+          status: "idle",
+          actions: [],
+          screenshots: [],
+          currentUrl: "",
+          report: null,
+        }),
     }),
-}));
+    {
+      name: "webmobai-session",
+      partialize: (state) => ({ config: state.config }),
+    },
+  ),
+);

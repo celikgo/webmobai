@@ -1,6 +1,6 @@
 {
   "name": "webmobai-mcp",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "WebMobAI MCP Server — Autonomous web QA testing powered by Claude AI + Playwright. Launch a visible browser, explore websites, run accessibility audits, measure performance, and generate test reports.",
   "type": "module",
   "main": "dist/index.js",
@@ -9,7 +9,8 @@
     "webmobai-test": "dist/auto-test.js",
     "webmobai-scenario": "dist/scenario-cli.js",
     "webmobai-suite": "dist/suite-cli.js",
-    "webmobai-codegen": "dist/codegen-cli.js"
+    "webmobai-codegen": "dist/codegen-cli.js",
+    "webmobai-monitor": "dist/monitor-cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -58,6 +59,7 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.99.0",
     "@axe-core/playwright": "^4.11.3",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "axe-core": "^4.11.4",
@@ -66,6 +68,10 @@
     "pngjs": "^7.0.0",
     "ws": "^8.18.0",
     "zod": "^3.24.2"
+  },
+  "optionalDependencies": {
+    "chrome-launcher": "^1.1.2",
+    "lighthouse": "^12.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",

@@ -38,3 +38,37 @@ export function toAssetUrl(path: string): string {
   if (typeof window === "undefined" || !("__TAURI__" in window)) return path;
   return convertFileSrc(path);
 }
+
+export function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI__" in window;
+}
+
+// Copy text to the clipboard. Returns true on success so callers can surface a
+// toast. Falls back gracefully when the Clipboard API is unavailable.
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Open a file path or URL in the OS default handler. Inside Tauri this uses the
+// shell plugin (already permitted); in plain-browser dev it opens a new tab.
+export async function openExternal(target: string): Promise<void> {
+  if (isTauri()) {
+    const { open } = await import("@tauri-apps/plugin-shell");
+    await open(target);
+  } else if (typeof window !== "undefined") {
+    window.open(target, "_blank", "noopener,noreferrer");
+  }
+}
+
+// Reveal a file in Finder (macOS) using `open -R`, which highlights the file in
+// its containing folder. Relies on the already-granted shell:allow-execute.
+export async function revealInFinder(path: string): Promise<void> {
+  if (!isTauri()) return;
+  const { Command } = await import("@tauri-apps/plugin-shell");
+  await Command.create("open", ["-R", path]).execute();
+}

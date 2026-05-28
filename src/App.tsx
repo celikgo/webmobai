@@ -8,6 +8,8 @@ import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { PerformancePanel } from "@/components/PerformancePanel";
 import { ResponsivePanel } from "@/components/ResponsivePanel";
 import { ConfigPanel } from "@/components/ConfigPanel";
+import { MonitorPanel } from "@/components/MonitorPanel";
+import { Toaster } from "@/components/Toaster";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 
 function SettingsDialog({
@@ -97,6 +99,7 @@ const panelComponents: Record<SidebarTab, React.ComponentType> = {
   accessibility: AccessibilityPanel,
   performance: PerformancePanel,
   responsive: ResponsivePanel,
+  monitors: MonitorPanel,
   config: ConfigPanel,
 };
 
@@ -107,8 +110,21 @@ const panelTitles: Record<SidebarTab, string> = {
   accessibility: "Accessibility Audit",
   performance: "Performance Metrics",
   responsive: "Responsive Testing",
+  monitors: "Monitors",
   config: "Configuration",
 };
+
+// Order matters: ⌘1…⌘8 map to these tabs left-to-right, matching the sidebar.
+const tabOrder: SidebarTab[] = [
+  "actions",
+  "screenshots",
+  "report",
+  "accessibility",
+  "performance",
+  "responsive",
+  "monitors",
+  "config",
+];
 
 export function App() {
   const [activeTab, setActiveTab] = useState<SidebarTab>("actions");
@@ -125,6 +141,25 @@ export function App() {
       root.className = theme;
     }
   }, [theme]);
+
+  // ⌘1…⌘7 / Ctrl+1…7 switch tabs. Skip when typing in an input so digits in
+  // the URL bar or filter box aren't hijacked.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA"))
+        return;
+      const n = parseInt(e.key, 10);
+      const next = tabOrder[n - 1];
+      if (next) {
+        e.preventDefault();
+        setActiveTab(next);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const ActivePanel = panelComponents[activeTab];
 
@@ -143,6 +178,7 @@ export function App() {
         </main>
       </div>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Toaster />
     </div>
   );
 }

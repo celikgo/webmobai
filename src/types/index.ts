@@ -88,6 +88,35 @@ export interface TestReport {
   consoleErrors: ConsoleError[];
   screenshots: Screenshot[];
   pagesExplored: string[];
+  /**
+   * Optional Claude-generated executive summary (Sprint 15). Markdown text;
+   * present only when the runner had WEBMOBAI_ANTHROPIC_API_KEY set.
+   */
+  aiSummary?: string;
+  /** Absolute path to the generated HTML report (Sprint 16). */
+  reportPath?: string;
+  /** Absolute path to the generated PDF report (Sprint 16). */
+  pdfPath?: string;
+  /**
+   * This-run-vs-historical-median comparison (Sprint 17). Present when 2+
+   * prior runs of this URL exist in `~/.webmobai/history.json`.
+   */
+  historicalComparison?: HistoricalComparison;
+}
+
+export interface HistoricalComparisonFinding {
+  metric: string;
+  current: number | null;
+  baseline: number | null;
+  deltaPct: number | null;
+  severity: "regression" | "improvement" | "noise";
+  message: string;
+}
+
+export interface HistoricalComparison {
+  url: string;
+  baselineRuns: number;
+  findings: HistoricalComparisonFinding[];
 }
 
 export interface SessionConfig {

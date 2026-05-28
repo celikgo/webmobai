@@ -29,6 +29,21 @@ export interface PerformanceMetrics {
     text?: string;
     size?: number;
   } | null;
+  /**
+   * Cumulative Layout Shift frozen 3s after the load event (Sprint 16). The
+   * running `cls` field keeps accumulating across the full session and
+   * inflates well past what a user's initial-load experience saw;
+   * `clsAtLoad` is the more faithful "did the page jump while loading?"
+   * number. Null until the load event has fired plus 3s.
+   */
+  clsAtLoad?: number | null;
+  /**
+   * Strict TTI (Sprint 16). Only present when `getPerformanceMetrics` was
+   * called with `{ strictTti: true }`. Computed as the start of the first
+   * 5-second long-task quiet window after FCP, per Lighthouse's definition
+   * (within the limits of what we can observe from inside the page).
+   */
+  ttiStrict?: number | null;
 }
 
 export interface ConsoleError {
@@ -65,6 +80,36 @@ export interface TestReportData {
   consoleErrors: ConsoleError[];
   screenshots: string[];
   pagesExplored: string[];
+  /**
+   * Optional Claude-generated executive summary (Sprint 15). Present only when
+   * the auto-test runner had WEBMOBAI_ANTHROPIC_API_KEY set. Markdown.
+   */
+  aiSummary?: string;
+  /** Absolute path to the generated HTML report file (Sprint 16). */
+  reportPath?: string;
+  /** Absolute path to the generated PDF report file (Sprint 16). */
+  pdfPath?: string;
+  /**
+   * Sprint 17: comparison of this run's metrics + counts to the median of
+   * the previous N runs of the same URL. Present whenever the run history
+   * holds 2+ prior runs for this URL.
+   */
+  historicalComparison?: HistoricalComparison;
+}
+
+export interface HistoricalComparisonFinding {
+  metric: string;
+  current: number | null;
+  baseline: number | null;
+  deltaPct: number | null;
+  severity: "regression" | "improvement" | "noise";
+  message: string;
+}
+
+export interface HistoricalComparison {
+  url: string;
+  baselineRuns: number;
+  findings: HistoricalComparisonFinding[];
 }
 
 export interface BrowserState {

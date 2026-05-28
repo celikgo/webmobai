@@ -2,7 +2,11 @@ import { describe, expect, it, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BrowserManager } from "../src/playwright/browser-manager.js";
+import {
+  BrowserManager,
+  pushBounded,
+  MAX_ERROR_ENTRIES,
+} from "../src/playwright/browser-manager.js";
 import { PageAnalyzer } from "../src/playwright/page-analyzer.js";
 import { fixtureUrl } from "./helpers/browser-fixture.js";
 
@@ -82,5 +86,23 @@ describe("BrowserManager — TTI / performance metrics", () => {
     expect(metrics).toHaveProperty("ttfb");
     expect(metrics).toHaveProperty("domContentLoaded");
     expect(metrics).toHaveProperty("loadComplete");
+  });
+});
+
+describe("BrowserManager — bounded error buffer", () => {
+  it("appends below the cap without trimming", () => {
+    const arr: number[] = [];
+    for (let i = 0; i < 10; i++) pushBounded(arr, i);
+    expect(arr).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it("retains the most recent MAX_ERROR_ENTRIES when overflowing", () => {
+    const arr: number[] = [];
+    const total = MAX_ERROR_ENTRIES + 25;
+    for (let i = 0; i < total; i++) pushBounded(arr, i);
+    expect(arr).toHaveLength(MAX_ERROR_ENTRIES);
+    // Oldest entries (0..24) are dropped; tail is the newest item.
+    expect(arr[0]).toBe(25);
+    expect(arr[arr.length - 1]).toBe(total - 1);
   });
 });

@@ -43,6 +43,11 @@ export function getBrowserToolDefinitions() {
             description: "Record video of the session (default: true)",
             default: true,
           },
+          idle_timeout_ms: {
+            type: "number",
+            description:
+              "Sprint 17: auto-close the browser after this many ms of no tool calls (e.g. 1800000 for 30 minutes). Default: disabled (no idle close). The dispatcher resets the timer after every successful tool call.",
+          },
         },
       },
     },
@@ -183,6 +188,7 @@ export async function handleBrowserTool(
           recordVideo: (args.record_video as boolean) ?? true,
           browser: browserName,
           device,
+          idleTimeoutMs: args.idle_timeout_ms as number | undefined,
         });
         const desc = device
           ? `${browserName} emulating ${device}`

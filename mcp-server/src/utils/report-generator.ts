@@ -1,5 +1,6 @@
 import { writeFile } from "fs/promises";
 import { join } from "path";
+import { chromium } from "playwright";
 import type {
   TestReportData,
   AccessibilityIssue,
@@ -31,6 +32,24 @@ export async function generateHtmlReport(
     .container { max-width: 900px; margin: 0 auto; }
     h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
     h2 { font-size: 1.1rem; margin: 1.5rem 0 0.75rem; color: #a78bfa; }
+    .compare { background: #171717; border: 1px solid #333; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+    .compare h2 { margin-top: 0; }
+    .compare .baseline-count { color: #888; font-size: 0.8rem; margin-bottom: 0.5rem; }
+    .compare table { width: 100%; }
+    .compare th { font-size: 0.75rem; }
+    .compare .sev { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: 4px; }
+    .sev-regression { background: #7f1d1d; color: #fecaca; }
+    .sev-improvement { background: #14532d; color: #bbf7d0; }
+    .sev-noise { background: #2c2c2c; color: #888; }
+    .ai-summary { background: linear-gradient(135deg, #1e1b4b 0%, #1e293b 100%); border: 1px solid #4c1d95; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+    .ai-summary .ai-tag { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; color: #c4b5fd; background: rgba(139, 92, 246, 0.15); padding: 0.2rem 0.5rem; border-radius: 4px; margin-bottom: 0.6rem; }
+    .ai-summary h3 { font-size: 0.95rem; color: #ddd6fe; margin: 0.75rem 0 0.35rem; }
+    .ai-summary h3:first-of-type { margin-top: 0; }
+    .ai-summary p { font-size: 0.9rem; line-height: 1.5; color: #e9d5ff; margin-bottom: 0.5rem; }
+    .ai-summary ul { padding-left: 1.25rem; margin-bottom: 0.5rem; }
+    .ai-summary li { font-size: 0.88rem; line-height: 1.5; color: #e9d5ff; margin-bottom: 0.3rem; }
+    .ai-summary strong { color: #f5d0fe; }
+    .ai-summary em { color: #c4b5fd; font-style: normal; }
     .meta { color: #888; font-size: 0.85rem; margin-bottom: 1.5rem; }
     .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
     .summary-card { background: #171717; border: 1px solid #333; border-radius: 8px; padding: 1rem; text-align: center; }
@@ -92,6 +111,44 @@ export async function generateHtmlReport(
     </div>
 
     <div class="bar"><div class="bar-fill" style="width: ${passRate}%"></div></div>
+
+    ${
+      report.aiSummary
+        ? `
+    <div class="ai-summary">
+      <div class="ai-tag">✦ Claude summary</div>
+      ${renderMarkdown(report.aiSummary)}
+    </div>`
+        : ""
+    }
+
+    ${
+      report.historicalComparison &&
+      report.historicalComparison.findings.length > 0
+        ? `
+    <div class="compare">
+      <h2>vs historical baseline</h2>
+      <div class="baseline-count">Median of the last ${report.historicalComparison.baselineRuns} run${report.historicalComparison.baselineRuns === 1 ? "" : "s"} of this URL.</div>
+      <table>
+        <thead><tr><th>Metric</th><th>Current</th><th>Baseline</th><th>Δ</th><th>Status</th></tr></thead>
+        <tbody>
+        ${report.historicalComparison.findings
+          .map(
+            (f) =>
+              `<tr>
+                <td>${escapeHtml(f.metric)}</td>
+                <td>${formatComparisonNum(f.current)}</td>
+                <td>${formatComparisonNum(f.baseline)}</td>
+                <td>${f.deltaPct == null ? "—" : (f.deltaPct > 0 ? "+" : "") + f.deltaPct.toFixed(1) + "%"}</td>
+                <td><span class="sev sev-${f.severity}">${f.severity}</span></td>
+              </tr>`,
+          )
+          .join("")}
+        </tbody>
+      </table>
+    </div>`
+        : ""
+    }
 
     <h2>Test Results</h2>
     ${report.results
@@ -183,6 +240,63 @@ function formatDuration(ms: number): string {
   return `${m}m ${s}s`;
 }
 
+// Tiny markdown → HTML for the AI summary section. Supports the subset we
+// instruct Claude to emit (## headings, - bullets, **bold**, *italic*) plus
+// plain paragraphs. Anything outside the subset falls through as a paragraph,
+// HTML-escaped first to keep the renderer safe. Exported for unit tests.
+export function renderMarkdown(md: string): string {
+  const out: string[] = [];
+  const lines = md.split(/\r?\n/);
+  let inList = false;
+  const flushList = () => {
+    if (inList) {
+      out.push("</ul>");
+      inList = false;
+    }
+  };
+  const inline = (s: string) =>
+    escapeHtml(s)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|\s)\*(?!\s)([^*]+?)\*(?=$|\s|[.,;:!?])/g, "$1<em>$2</em>");
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === "") {
+      flushList();
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      flushList();
+      out.push(`<h3>${inline(line.slice(3))}</h3>`);
+      continue;
+    }
+    if (line.startsWith("### ")) {
+      flushList();
+      out.push(`<h3>${inline(line.slice(4))}</h3>`);
+      continue;
+    }
+    if (line.startsWith("- ") || line.startsWith("* ")) {
+      if (!inList) {
+        out.push("<ul>");
+        inList = true;
+      }
+      out.push(`<li>${inline(line.slice(2))}</li>`);
+      continue;
+    }
+    flushList();
+    out.push(`<p>${inline(line)}</p>`);
+  }
+  flushList();
+  return out.join("\n");
+}
+
+function formatComparisonNum(v: number | null): string {
+  if (v == null) return "—";
+  if (Math.abs(v) >= 100) return Math.round(v).toString();
+  if (Math.abs(v) >= 1) return v.toFixed(1);
+  return v.toFixed(3);
+}
+
 function formatMetricCard(
   label: string,
   value: number | null,
@@ -195,6 +309,40 @@ function formatMetricCard(
         ? `${Math.round(value)}ms`
         : value.toFixed(3);
   return `<div class="metric-card"><div class="value">${display}</div><div class="label">${label}</div></div>`;
+}
+
+/**
+ * Render an existing HTML report to PDF (Sprint 16). Spins up an isolated
+ * headless Chromium instance just for the print job so we never disrupt the
+ * caller's active page. Returns the generated PDF path.
+ *
+ * Playwright is already a runtime dep — no new library needed.
+ */
+export async function generatePdfReport(
+  htmlPath: string,
+  outputDir: string,
+): Promise<string> {
+  const pdfPath = join(outputDir, `report-${Date.now()}.pdf`);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    // file:// URLs need three leading slashes when the path is absolute.
+    const url = htmlPath.startsWith("/")
+      ? `file://${htmlPath}`
+      : `file:///${htmlPath}`;
+    await page.goto(url, { waitUntil: "networkidle" });
+    await page.pdf({
+      path: pdfPath,
+      format: "A4",
+      printBackground: true,
+      margin: { top: "12mm", right: "10mm", bottom: "12mm", left: "10mm" },
+    });
+  } finally {
+    await browser.close().catch(() => {});
+  }
+  logger.info(`PDF report saved to ${pdfPath}`);
+  return pdfPath;
 }
 
 export type { TestReportData, AccessibilityIssue, PerformanceMetrics, ConsoleError };

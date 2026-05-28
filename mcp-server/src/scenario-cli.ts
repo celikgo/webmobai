@@ -47,7 +47,7 @@ async function main() {
   }
   if (!scenario.url || !Array.isArray(scenario.steps)) {
     console.error(
-      "Scenario must have { url, steps[] }. See docs/SCENARIO_FORMAT.md (TODO) or the example fixtures.",
+      "Scenario must have { url, steps[] }. See docs/SCENARIO_FORMAT.md or the example fixtures.",
     );
     process.exit(2);
   }

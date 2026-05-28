@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { useState, useRef } from "react";
+import { toast } from "@/stores/useToastStore";
+import { useState, useRef, useEffect } from "react";
 
 interface HeaderProps {
   onOpenSettings: () => void;
@@ -118,13 +119,28 @@ export function Header({ onOpenSettings }: HeaderProps) {
             status: "error",
           });
           setStatus("error");
+          toast({
+            title: "Test runner error",
+            description: String(err),
+            variant: "destructive",
+          });
         });
 
         cmd.on("close", (data: { code: number | null }) => {
           if (data.code === 0 || data.code === null) {
             setStatus("completed");
+            toast({
+              title: "Test completed",
+              description: url,
+              variant: "success",
+            });
           } else {
             setStatus("error");
+            toast({
+              title: "Test failed",
+              description: `Runner exited with code ${data.code}`,
+              variant: "destructive",
+            });
           }
           childRef.current = null;
         });
@@ -170,6 +186,29 @@ export function Header({ onOpenSettings }: HeaderProps) {
   };
 
   const isRunning = status === "running" || status === "starting";
+
+  // Global shortcuts: ⌘↵ start a test, ⌘. stop the current run. Refs keep the
+  // window listener pointed at the latest handlers without re-subscribing.
+  const startRef = useRef(handleStart);
+  const stopRef = useRef(handleStop);
+  startRef.current = handleStart;
+  stopRef.current = handleStop;
+  const runningRef = useRef(isRunning);
+  runningRef.current = isRunning;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (!runningRef.current) startRef.current();
+      } else if (e.key === ".") {
+        e.preventDefault();
+        if (runningRef.current) stopRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">

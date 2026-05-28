@@ -1,9 +1,20 @@
-import { FileText, CheckCircle, XCircle, AlertTriangle, BarChart3 } from "lucide-react";
+import {
+  FileText,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  BarChart3,
+  ExternalLink,
+  FileDown,
+} from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { AiSummary } from "@/components/AiSummary";
+import { HistoricalComparison } from "@/components/HistoricalComparison";
 import { useSessionStore } from "@/stores/useSessionStore";
-import { formatDuration } from "@/lib/utils";
+import { toast } from "@/stores/useToastStore";
+import { formatDuration, openExternal, isTauri } from "@/lib/utils";
 
 export function TestReport() {
   const { report } = useSessionStore();
@@ -65,7 +76,62 @@ export function TestReport() {
             Duration: {formatDuration(report.completedAt - report.startedAt)} | Pages explored:{" "}
             {report.pagesExplored.length}
           </div>
+
+          {/* Sprint 16: open the artifacts the runner wrote to disk. */}
+          {isTauri() && (report.reportPath || report.pdfPath) && (
+            <div className="mt-3 flex gap-2">
+              {report.reportPath && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await openExternal(report.reportPath!);
+                    } catch (err) {
+                      toast({
+                        title: "Could not open HTML report",
+                        description: String(err),
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-xs hover:bg-accent cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open HTML
+                </button>
+              )}
+              {report.pdfPath && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await openExternal(report.pdfPath!);
+                    } catch (err) {
+                      toast({
+                        title: "Could not open PDF",
+                        description: String(err),
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-xs hover:bg-accent cursor-pointer"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  Open PDF
+                </button>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* AI Summary (only when WEBMOBAI_ANTHROPIC_API_KEY was set during the run) */}
+        {report.aiSummary && <AiSummary summary={report.aiSummary} />}
+
+        {/* Historical comparison (Sprint 17). Fires a regression toast on mount. */}
+        {report.historicalComparison &&
+          report.historicalComparison.findings.length > 0 && (
+            <HistoricalComparison comparison={report.historicalComparison} />
+          )}
 
         {/* Test Results */}
         <div className="space-y-1">

@@ -22,15 +22,28 @@ export function resetSessionData() {
   sessionData.results = [];
 }
 
+// Read-only snapshot of the test results accumulated this session. Used by the
+// AI audit summarizer (Sprint 15) to roll findings into an executive summary.
+export function getSessionResults(): TestResult[] {
+  return [...sessionData.results];
+}
+
 export function getReportingToolDefinitions() {
   return [
     {
       name: "webmobai_get_performance_metrics",
       description:
-        "Collect Web Vitals and performance metrics for the current page: LCP, FCP, CLS, TTI, TTFB, and load timing.",
+        "Collect Web Vitals and performance metrics for the current page: LCP, FCP, CLS, TTI, INP, TTFB, and load timing. Sprint 16 adds a `clsAtLoad` field (cumulative layout shift frozen 3s past the load event — more faithful than the running CLS for long sessions) and an opt-in `strict_tti` mode that waits for a 5-second long-task quiet window before reporting TTI.",
       inputSchema: {
         type: "object" as const,
-        properties: {},
+        properties: {
+          strict_tti: {
+            type: "boolean",
+            description:
+              "Wait for a 5s long-task quiet window after FCP before computing TTI (Lighthouse's strict definition). Adds the `ttiStrict` field to the result. Slower (up to ~15s) — default false uses the fast last-long-task end approximation.",
+            default: false,
+          },
+        },
       },
     },
     {
@@ -124,13 +137,19 @@ export async function handleReportingTool(
 
     switch (name) {
       case "webmobai_get_performance_metrics": {
-        const metrics = await analyzer.getPerformanceMetrics();
+        const strictTti = (args.strict_tti as boolean | undefined) ?? false;
+        const metrics = await analyzer.getPerformanceMetrics({ strictTti });
         let result = "# Performance Metrics\n\n";
         result += `| Metric | Value | Rating |\n|--------|-------|--------|\n`;
         result += `| LCP    | ${metrics.lcp != null ? Math.round(metrics.lcp) + "ms" : "N/A"} | ${rateMetric("lcp", metrics.lcp)} |\n`;
         result += `| FCP    | ${metrics.fcp != null ? Math.round(metrics.fcp) + "ms" : "N/A"} | ${rateMetric("fcp", metrics.fcp)} |\n`;
-        result += `| CLS    | ${metrics.cls != null ? metrics.cls.toFixed(3) : "N/A"} | ${rateMetric("cls", metrics.cls)} |\n`;
-        result += `| TTI    | ${metrics.tti != null ? Math.round(metrics.tti) + "ms" : "N/A"} | ${rateMetric("tti", metrics.tti)} |\n`;
+        result += `| CLS (running) | ${metrics.cls != null ? metrics.cls.toFixed(3) : "N/A"} | ${rateMetric("cls", metrics.cls)} |\n`;
+        result += `| CLS (at load) | ${metrics.clsAtLoad != null ? metrics.clsAtLoad.toFixed(3) : "N/A"} | ${rateMetric("cls", metrics.clsAtLoad ?? null)} |\n`;
+        result += `| TTI (fast) | ${metrics.tti != null ? Math.round(metrics.tti) + "ms" : "N/A"} | ${rateMetric("tti", metrics.tti)} |\n`;
+        if (strictTti) {
+          result += `| TTI (strict) | ${metrics.ttiStrict != null ? Math.round(metrics.ttiStrict) + "ms" : "N/A"} | ${rateMetric("tti", metrics.ttiStrict ?? null)} |\n`;
+        }
+        result += `| INP    | ${metrics.inp != null ? Math.round(metrics.inp) + "ms" : "N/A"} | - |\n`;
         result += `| TTFB   | ${metrics.ttfb != null ? Math.round(metrics.ttfb) + "ms" : "N/A"} | ${rateMetric("ttfb", metrics.ttfb)} |\n`;
         result += `| DOM Content Loaded | ${metrics.domContentLoaded != null ? Math.round(metrics.domContentLoaded) + "ms" : "N/A"} | - |\n`;
         result += `| Page Load Complete | ${metrics.loadComplete != null ? Math.round(metrics.loadComplete) + "ms" : "N/A"} | - |\n`;

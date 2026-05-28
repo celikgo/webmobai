@@ -385,8 +385,22 @@ export class PageAnalyzer {
     }));
   }
 
-  async getPerformanceMetrics(): Promise<PerformanceMetrics> {
-    logger.info("Collecting performance metrics");
+  async getPerformanceMetrics(
+    options: { strictTti?: boolean } = {},
+  ): Promise<PerformanceMetrics> {
+    logger.info(
+      `Collecting performance metrics (strictTti=${options.strictTti ?? false})`,
+    );
+
+    // Sprint 16: opt-in strict TTI. The default fast path takes the end of
+    // the last observed long task, which is within ~10% of the true value
+    // for most pages but doesn't actually verify the 5-second quiet window.
+    // When the caller asks for strict TTI, wait for that window (up to 15s
+    // total) before computing.
+    let ttiStrict: number | null | undefined = undefined;
+    if (options.strictTti) {
+      ttiStrict = await this.measureStrictTti(15_000);
+    }
 
     const metrics = await this.page.evaluate(() => {
       const perf = performance;
@@ -425,9 +439,21 @@ export class PageAnalyzer {
       // updated on every interaction). Null if no interactions have
       // happened yet, which is honest: INP only makes sense after the user
       // has actually interacted.
-      const w = window as { __webmobai_longestInteraction?: number };
+      const w = window as {
+        __webmobai_longestInteraction?: number;
+        __webmobai_loadCls?: number;
+        __webmobai_loadClsFrozen?: boolean;
+      };
       const inpRaw = w.__webmobai_longestInteraction;
       const inp = inpRaw != null && inpRaw > 0 ? inpRaw : null;
+
+      // Sprint 16: load-CLS, the cumulative shift frozen 3s past `load`.
+      // Reports null until the freeze happens so we don't return a value
+      // that's still climbing.
+      const clsAtLoad =
+        w.__webmobai_loadClsFrozen && w.__webmobai_loadCls != null
+          ? w.__webmobai_loadCls
+          : null;
 
       // LCP element fingerprint — answers "what's the biggest thing above
       // the fold?" so the caller knows what to optimize.
@@ -460,25 +486,90 @@ export class PageAnalyzer {
         domContentLoaded: nav?.domContentLoadedEventEnd ?? null,
         loadComplete: nav?.loadEventEnd ?? null,
         lcpElement,
+        clsAtLoad,
       };
     });
 
-    logger.info("Performance metrics collected", metrics);
-    return metrics;
+    const result: PerformanceMetrics =
+      ttiStrict !== undefined ? { ...metrics, ttiStrict } : metrics;
+    logger.info("Performance metrics collected", result);
+    return result;
+  }
+
+  /**
+   * Compute Lighthouse-style strict TTI: the start of the first 5-second
+   * long-task quiet window after FCP. Waits up to `maxWaitMs` for that
+   * window to actually occur; returns null if it doesn't.
+   */
+  private async measureStrictTti(maxWaitMs = 15_000): Promise<number | null> {
+    const deadline = Date.now() + maxWaitMs;
+    // First make sure the page is at least network-idle — otherwise more
+    // long tasks may still be arriving.
+    await this.page
+      .waitForLoadState("networkidle", { timeout: Math.max(0, deadline - Date.now()) })
+      .catch(() => {});
+
+    // Then poll the in-page observer state until either a 5s quiet window is
+    // confirmed or we run out of budget.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const probe = await this.page.evaluate(() => {
+        const paint = performance.getEntriesByType("paint");
+        const fcp =
+          paint.find((e) => e.name === "first-contentful-paint")?.startTime ??
+          null;
+        if (fcp == null) return { result: null as number | null, waitMs: 500 };
+        const tasks = (performance.getEntriesByType("longtask") as PerformanceEntry[])
+          .filter((e) => e.startTime + e.duration > fcp)
+          .sort((a, b) => a.startTime - b.startTime);
+        // Walk forward looking for the first 5s gap.
+        let candidate = fcp;
+        for (const t of tasks) {
+          if (t.startTime - candidate >= 5000) {
+            return { result: candidate, waitMs: 0 };
+          }
+          candidate = t.startTime + t.duration;
+        }
+        const now = performance.now();
+        if (now - candidate >= 5000) {
+          return { result: candidate, waitMs: 0 };
+        }
+        return { result: null as number | null, waitMs: 5000 - (now - candidate) };
+      });
+      if (probe.result !== null) return probe.result;
+      await this.page.waitForTimeout(
+        Math.min(probe.waitMs + 100, Math.max(remaining, 0)),
+      );
+    }
+    return null;
   }
 
   async getLinks(): Promise<string[]> {
     return await this.page.evaluate(() => {
       const links = new Set<string>();
+      // `.href` on an HTMLAnchorElement normally returns the fully-resolved
+      // absolute URL — which works for most pages. The edge case is a
+      // `file://` document context: `<a href="//cdn.foo/x">` resolves to
+      // `file://cdn.foo/x`, which we'd otherwise drop. Handle the raw
+      // protocol-relative form explicitly so test fixtures and local
+      // previews still see those links.
       document.querySelectorAll("a[href]").forEach((a) => {
-        const href = (a as HTMLAnchorElement).href;
-        if (
-          href &&
-          href.startsWith("http") &&
-          !href.includes("javascript:") &&
-          !href.includes("mailto:")
-        ) {
-          links.add(href);
+        const raw = a.getAttribute("href") ?? "";
+        if (!raw || raw.startsWith("javascript:") || raw.startsWith("mailto:")) {
+          return;
+        }
+        let url = (a as HTMLAnchorElement).href;
+        if (raw.startsWith("//")) {
+          const proto =
+            window.location.protocol === "file:"
+              ? "https:"
+              : window.location.protocol;
+          url = `${proto}${raw}`;
+        }
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+          links.add(url);
         }
       });
       return Array.from(links);

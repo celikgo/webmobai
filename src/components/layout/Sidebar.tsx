@@ -7,6 +7,7 @@ import {
   Accessibility,
   Gauge,
   Monitor,
+  LineChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -27,6 +28,7 @@ export type SidebarTab =
   | "accessibility"
   | "performance"
   | "responsive"
+  | "monitors"
   | "config";
 
 interface SidebarProps {
@@ -41,6 +43,7 @@ const tabs: { id: SidebarTab; label: string; icon: React.ReactNode }[] = [
   { id: "accessibility", label: "Accessibility", icon: <Accessibility className="w-5 h-5" /> },
   { id: "performance", label: "Performance", icon: <Gauge className="w-5 h-5" /> },
   { id: "responsive", label: "Responsive", icon: <Monitor className="w-5 h-5" /> },
+  { id: "monitors", label: "Monitors", icon: <LineChart className="w-5 h-5" /> },
   { id: "config", label: "Configuration", icon: <Settings2 className="w-5 h-5" /> },
 ];
 
@@ -95,7 +98,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
         <div className="mt-auto">
           <Badge variant="outline" className="text-[9px] px-1 py-0.5">
-            v1.2
+            v1.3
           </Badge>
         </div>
       </aside>
