@@ -5,9 +5,9 @@
 WebMobAI gives you four ways to test the same browser engine:
 
 1. **Desktop app** — enter a URL, click Test, get a report
-2. **Standalone CLI** — `webmobai-test`, `webmobai-scenario`, `webmobai-suite`, `webmobai-codegen`
+2. **Standalone CLI** — `webmobai-test`, `webmobai-scenario`, `webmobai-suite`, `webmobai-codegen`, `webmobai-monitor`
 3. **Scripted scenarios** — JSON files with assertions, network mocking, visual snapshots
-4. **AI-driven via MCP** — Claude calls 43 tools to compose tests in natural language
+4. **AI-driven via MCP** — Claude calls 49 tools to compose tests in natural language
 
 The distinctive feature is **self-healing selectors**: when a `[data-testid=submit]` stops matching (because someone renamed the testid), the tool response includes the prior element fingerprint, ranked candidate replacements, and the page-state triage — so an AI client retries with a smarter selector instead of failing the test.
 
@@ -39,8 +39,14 @@ The distinctive feature is **self-healing selectors**: when a `[data-testid=subm
 | Playwright traces for time-travel debugging | Auto-captured to `<session>/trace.zip` |
 | JUnit XML for CI integration | Auto-emitted alongside HTML |
 | Selector inspector | `webmobai_describe_selector` |
+| **AI** (opt-in via `WEBMOBAI_ANTHROPIC_API_KEY`): visual-diff narration, executive audit summary, NL → scenario | `webmobai_explain_visual_diff`, `webmobai_summarize_audit`, `webmobai_generate_scenario_from_prompt` |
+| **Lighthouse** official scores (opt-dep) | `webmobai_lighthouse_audit` |
+| **Visual baseline history** — archive on overwrite, list, restore | `webmobai_visual_baseline_list_versions`, `webmobai_visual_baseline_restore_version` |
+| **PDF report** (auto-emitted alongside HTML) | Auto in `webmobai-test`; `Open PDF` button in the desktop app |
+| **Scheduled / monitor mode** (Sprint 17) | `webmobai-monitor <url> --interval=5m --alert-webhook=<url>` |
+| **Trend dashboard** + this-run-vs-historical-median comparison | Desktop **Monitors** tab; auto-embedded in every report |
 
-**43 MCP tools**, **5 binaries**, **158 tests**, and the test surface stays green on Chromium + Firefox + WebKit via CI.
+**49 MCP tools**, **6 binaries**, **200 tests**, and the test surface stays green on Chromium + Firefox + WebKit via CI.
 
 ---
 
@@ -72,6 +78,7 @@ webmobai-test https://example.com                  # one-shot full audit
 webmobai-scenario ./scenarios/login.json           # run a scripted scenario
 webmobai-suite ./suite.json --workers 4 --tag smoke   # parallel CI suite
 webmobai-codegen https://example.com -o test.json  # record a flow interactively
+webmobai-monitor https://example.com --interval=5m # recurring runs + regression alerts
 ```
 
 ### Option 3: Claude (AI-Driven via MCP)
@@ -192,14 +199,15 @@ webmobai/
 │   │   ├── scenario-cli.ts         webmobai-scenario CLI
 │   │   ├── suite-cli.ts            webmobai-suite CLI
 │   │   ├── codegen-cli.ts          webmobai-codegen CLI
+│   │   ├── monitor-cli.ts          webmobai-monitor CLI (Sprint 17)
 │   │   ├── playwright/             BrowserManager, PageAnalyzer, element snapshots
-│   │   ├── tools/                  11 MCP tool files (43 tools)
+│   │   ├── tools/                  16 MCP tool files (49 tools, incl. ai-tools, lighthouse-tools)
 │   │   ├── scenario/               types, runner, scaffolder
 │   │   ├── suite/                  types, loader, filter, runner
 │   │   ├── visual/                 comparator, baseline-store
 │   │   ├── utils/                  report generators, history, failure triage
 │   │   └── run-config.ts           SessionConfig parser
-│   └── test/                       158 tests across 20 files
+│   └── test/                       200 tests across 23 files
 └── .claude/skills/         # Claude Code skills for AI-driven workflows
 ```
 

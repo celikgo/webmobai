@@ -2,6 +2,254 @@
 
 All notable changes to WebMobAI will be documented in this file.
 
+## [1.3.0] - 2026-05-28
+
+Four sprints (14–17) covering desktop polish, an opt-in Claude API layer,
+Lighthouse + PDF + baseline-history, and a monitoring/scheduling story.
+
+- **MCP tools:** 43 → **49** (+6)
+- **CLI binaries:** 5 → **6** (added `webmobai-monitor`)
+- **Tests:** 158 → **200** (+42)
+- **No breaking changes** to existing scenarios, suites, or MCP tool surfaces.
+
+The four sections below preserve the per-sprint breakdown for navigation.
+
+### Sprint 17 — Monitoring & scheduling
+
+Turns WebMobAI from a one-shot tester into something that watches a site over
+time. Builds entirely on the existing `~/.webmobai/history.json` substrate
+and the existing `detectRegressions` helper — no new on-disk schema, no new
+Tauri plugins.
+
+### Added — `webmobai-monitor` CLI (new binary, total 5 → 6)
+- `webmobai-monitor <url> [config-json] [flags]` runs the autonomous
+  auto-test on a recurring interval, appending each run to history.
+- Flags: `--interval=<duration>` (e.g. `30s` / `5m` / `1h`, default 5 m),
+  `--once` (single iteration; useful for smoke tests), `--alert-webhook=<url>`
+  (POST a JSON regression bundle when this run is worse than the historical
+  median), `--config=<json>`.
+- Reuses the existing `auto-test.ts` runner via `child_process.spawn` — no
+  refactor of the one-shot script needed. Stdout is inherited so each run's
+  output streams through.
+- Stops cleanly on `SIGINT` / `SIGTERM` between iterations.
+
+### Added — Monitors desktop tab
+- New sidebar tab (⌘7), reads `~/.webmobai/history.json` via the already-
+  granted `shell:allow-execute` (`cat <home>/.webmobai/history.json`). No new
+  Tauri permission needed.
+- URL picker (default: most-recently-run URL).
+- Four small inline-SVG sparklines (no chart library): LCP, FCP, CLS, TTFB,
+  plus console-error and a11y-issue counts. Each shows min / current / max.
+- Run table (last 30 runs of the selected URL) with pass-rate badge and
+  duration.
+- "Refresh" button re-reads the file.
+
+### Added — historical comparison in the report
+- `auto-test.ts` now calls `detectRegressions` against the history after
+  every run and embeds the result in `TestReportData.historicalComparison`
+  whenever 2+ prior runs of this URL exist.
+- HTML report renders a "vs historical baseline" table with delta % and a
+  colored severity tag per metric.
+- Desktop **Test Report** panel mirrors the same comparison with a new
+  `HistoricalComparison` component. On mount, if real regressions are
+  present, fires a single destructive toast — lightweight alerting without
+  pulling in the Tauri notification plugin.
+
+### Changed — hardening (Track D fold-in)
+- **Idle session timeout** in `BrowserManager`: optional `idleTimeoutMs`
+  closes the browser after that much inactivity. `bumpIdleTimer()` resets
+  the countdown; the MCP dispatcher calls it after every successful tool
+  call, so long-lived MCP sessions don't keep pages alive forever.
+- `webmobai_launch_browser` exposes `idle_timeout_ms` in its tool schema.
+
+### Tests
+- Tests: 186 → **200** (+14 in `mcp-server/test/sprint17.test.ts`:
+  `parseInterval` accepts ms/s/m/h + decimals, rejects malformed input;
+  `parseArgs` requires a URL, supports `--flag=value` and `--flag value`,
+  positional config JSON, default 5 m / `--once` off; `runMonitorLoop` with
+  `--once` runs exactly once, stops between iterations when `isStopping`
+  flips; `BrowserManager.setIdleTimeout` clears properly and clamps
+  non-positive values to disabled).
+
+### Sprint 16 — New testing capabilities
+
+Adds the four most-requested net-new testing features and closes the known
+accuracy gaps documented in FEATURES.md §4.
+
+### Added — Lighthouse integration
+- **`webmobai_lighthouse_audit`** — runs the upstream Google Lighthouse engine
+  via a lazy dynamic import of `lighthouse` + `chrome-launcher` (both
+  **optionalDependencies**). Returns the four official category scores
+  (Performance / Accessibility / Best Practices / SEO) plus the eight
+  lowest-scoring audits ranked worst first. New `src/perf/lighthouse.ts` +
+  `src/tools/lighthouse-tools.ts`. If the optional deps aren't installed, the
+  tool returns a clean `LighthouseUnavailableError` with install instructions
+  instead of crashing.
+- Lighthouse drives its own headless Chrome via `chrome-launcher`, so the
+  caller's `BrowserManager` session is untouched.
+
+### Added — PDF report export
+- `generatePdfReport(htmlPath, outDir)` renders the HTML report to PDF via
+  Playwright's `page.pdf()` in an isolated headless Chromium. No new library
+  — Playwright was already a runtime dep.
+- The auto-test runner now emits the PDF alongside the HTML at the end of
+  every run. Failures are non-fatal (the HTML is still the source of truth).
+- `TestReportData` gains `reportPath` and `pdfPath`; the desktop **Test
+  Report** panel renders "Open HTML" and "Open PDF" buttons (opened via the
+  already-granted `shell:allow-open`).
+
+### Added — Visual baseline history
+- `BaselineStore` now **archives the previous baseline** to
+  `<name>.v<unix-ms>.png` whenever a new one is written (first writes have
+  nothing to archive). Up to `maxVersions` (default 5) archives are kept per
+  snapshot; the oldest are pruned.
+- New methods: `listVersions(name)`, `restoreVersion(name, timestamp)`,
+  `versionPathFor(name, ts)`.
+- Two new MCP tools: **`webmobai_visual_baseline_list_versions`** and
+  **`webmobai_visual_baseline_restore_version`**. Neither requires a browser
+  — they operate on disk.
+- `webmobai_visual_snapshot` with `update_baseline: true` now preserves the
+  previous baseline instead of silently overwriting it.
+
+### Added — performance accuracy fixes
+- **`clsAtLoad`** — cumulative layout shift frozen 3 s after the `load` event
+  (new `BrowserManager` init script). The running `cls` field is unchanged
+  but now sits next to a more faithful "did the page jump while loading?"
+  number that doesn't keep climbing across session-long shifts. Closes the
+  CLS-window gap in FEATURES.md §4.
+- **`ttiStrict`** — opt-in strict TTI mode. `getPerformanceMetrics({
+  strictTti: true })` waits for an actual 5-second long-task quiet window
+  after FCP (Lighthouse's strict definition) before returning, up to 15 s
+  total. The MCP tool gains a `strict_tti: boolean` argument. Default fast
+  mode is unchanged so existing callers keep their snappy behavior.
+
+### Fixed
+- **Protocol-relative links** — `PageAnalyzer.getLinks` previously dropped
+  `<a href="//cdn.foo/x">` when the document was loaded via `file://`
+  (because the browser resolves `.href` to `file://cdn.foo/x`). Now detects
+  the raw `//` form via `getAttribute` and synthesizes an `https://` URL,
+  matching real-page behavior for local fixtures and previews. Documented
+  fix from FEATURES.md §4.
+
+### Added — documentation (Track D fold-in)
+- **`docs/SCENARIO_FORMAT.md`** — the scenario-format reference doc that
+  `webmobai-scenario` already pointed users at, but didn't exist.
+  Covers every step verb, the top-level shape, the suite format,
+  scenario-generation workflows, and a complete worked example.
+
+### Tests
+- Tests: 177 → 186 (+9 in `mcp-server/test/sprint16.test.ts`: baseline
+  versioning incl. archive-on-overwrite / pruning / nested names / restore /
+  unknown-timestamp rejection, plus Lighthouse error class + markdown
+  formatter).
+
+### Tools
+- MCP tool count: 46 → **49** (+`webmobai_lighthouse_audit`,
+  `_visual_baseline_list_versions`, `_visual_baseline_restore_version`).
+
+### Sprint 15 — AI intelligence layer ⭐
+
+Introduces an **opt-in** Claude API layer. All AI features are gated behind
+`WEBMOBAI_ANTHROPIC_API_KEY`; when no key is present every existing tool keeps
+working unchanged and the new AI tools return a clean "set the key" message.
+This is a deliberate reversal of the "no external API calls from the server"
+stance previously documented in FEATURES.md §3.
+
+### Added — AI module (`mcp-server/src/ai/`)
+- **AI client** (`ai/client.ts`) — thin wrapper over `@anthropic-ai/sdk` with
+  key gating, lazy memoization, and **prompt caching** (`cache_control:
+  ephemeral` on every system prompt). Returns a typed `CompleteResult` with
+  usage stats including cache-hit counters.
+- **Config** (`ai/config.ts`) — reads `WEBMOBAI_ANTHROPIC_API_KEY`,
+  `WEBMOBAI_AI_MODEL` (default `claude-opus-4-7`), and `WEBMOBAI_AI_MAX_TOKENS`
+  (default 2048).
+- **Visual-diff narrator** (`ai/visual-narrator.ts`) — sends baseline + actual
+  (+ optional diff mask) PNGs to Claude and returns a plain-English 2–6 bullet
+  description of what visibly changed, plus a severity tag (cosmetic /
+  content / structural). Closes the FEATURES.md §3 "out of scope" item.
+- **Audit summarizer** (`ai/audit-summarizer.ts`) — rolls accumulated a11y,
+  perf, console errors, and test results into a prioritized markdown summary
+  (Headline / Top fixes / What's working) under 350 words.
+- **NL → scenario generator** (`ai/scenario-generator.ts`) — converts a
+  natural-language description plus a snapshot of the current page state into
+  a validated Scenario JSON document. Output is zod-validated before return;
+  malformed model output throws loudly instead of producing a broken scenario.
+
+### Added — MCP tools (3 new, total 43 → 46)
+- `webmobai_explain_visual_diff` — narration of a visual-regression diff.
+  Operates on file paths; no browser required.
+- `webmobai_summarize_audit` — executive summary of the current session.
+  Browser must be launched (for a fresh axe-core + Web Vitals snapshot).
+- `webmobai_generate_scenario_from_prompt` — generate a Scenario JSON from a
+  natural-language description grounded in the current live page.
+
+### Added — desktop integration
+- **Auto-test integration**: when `WEBMOBAI_ANTHROPIC_API_KEY` is set during
+  an autonomous run, the runner asks Claude for an executive summary at the
+  end and embeds it in `TestReportData.aiSummary`. Failures in the AI call
+  emit a soft warning action and never abort the run.
+- **HTML report**: new "Claude summary" section rendered with a tiny safe
+  markdown subset (## / -, **, *) and a purple accent.
+- **Desktop "Test Report" panel**: matching `AiSummary` React component
+  rendered above the test results when present.
+
+### Changed — hardening (Track D fold-in)
+- `server.ts` dispatcher refactored from ~11 copy-pasted "is browser
+  launched?" guards into a single table-driven router (`ToolGroup[]` +
+  `requiresBrowser`). The cleanup saves ~100 lines and makes adding new tool
+  groups a one-line change.
+
+### Tests
+- Tests: 160 → 177 (+17 AI tests covering config gating, disabled path on all
+  three new tools, Scenario JSON validation incl. code-fence stripping and
+  unknown-step rejection, and the markdown renderer incl. HTML escaping for
+  injection safety).
+
+### Sprint 14 — Desktop polish & persistence
+
+Closes the visible rough edges in the desktop app and makes the app remember
+the user across restarts. UI-only / tooling — the engine is unchanged.
+
+### Added
+- **State persistence** — settings (theme, MCP port, screenshot dir, video,
+  always-on-top, auto-start) and the Configuration-panel values now persist to
+  `localStorage` via Zustand `persist` middleware and survive an app relaunch.
+- **Fullscreen screenshot preview** — clicking a thumbnail opens a lightbox
+  with `←` / `→` keyboard navigation and a position indicator. New
+  `src/components/ui/dialog.tsx` (Radix Dialog wrapper).
+- **Toast notifications** — Radix Toast wired through a small store; fires on
+  test complete / failed, copy-to-clipboard success, and screenshot errors.
+  New `src/components/ui/toast.tsx`, `src/components/Toaster.tsx`,
+  `src/stores/useToastStore.ts`.
+- **Keyboard shortcuts** — `⌘↵` / `Ctrl+Enter` runs a test, `⌘.` / `Ctrl+.`
+  stops a run, `⌘1`…`⌘7` switch sidebar tabs (skipping when typing in inputs).
+- **Clickable WCAG references** in the Accessibility panel — each finding now
+  has a "Learn more" link that opens the rule's `helpUrl` in the OS default
+  browser via the shell plugin.
+- **Copy-selector buttons** on every accessibility node (clipboard + toast).
+- **Action Log filter + export** — status chips (All / Running / Success /
+  Errors), full-text filter, and a "Copy" button that copies the filtered log
+  as JSON. Auto-scroll suspends when filters are active.
+- **Screenshot Open / Reveal in Finder** — the previously-stubbed hover
+  buttons now use the already-granted `shell:allow-open` and
+  `shell:allow-execute` to open the screenshot in the OS default viewer or
+  highlight it in Finder via `open -R`. No new Tauri plugins required.
+
+### Changed — hardening
+- **Bounded error buffers** — `BrowserManager.consoleErrors` and
+  `.networkErrors` are now capped at 500 entries via a ring-buffer push helper
+  (`pushBounded`), preventing unbounded growth on long crawls or monitoring
+  sessions. Tests added.
+
+### Removed
+- Dead `wsConnected` / `setWsConnected` from the session store — the WS
+  streaming path was never implemented (v1.1.0 moved to stdout JSON), so the
+  unused field is now gone.
+
+### Tests
+- Tests: 158 → 160 (added bounded-buffer coverage in
+  `mcp-server/test/browser-manager.test.ts`).
+
 ## [1.2.0] - 2026-05-12
 
 The big one: thirteen sprints of additions that move the project from

@@ -11,22 +11,23 @@ This file is the contract: **what's shipped today**, **what's intentionally out 
 Three consumer paths share one engine:
 
 1. **Standalone desktop app** — user enters a URL, clicks Test, watches results stream in. Powered by the `webmobai-test` CLI.
-2. **AI-driven via MCP** — Claude (or any MCP-compatible agent) calls **43 MCP tools** to explore, interact, audit, assert, mock, and report.
+2. **AI-driven via MCP** — Claude (or any MCP-compatible agent) calls **49 MCP tools** to explore, interact, audit, assert, mock, and report.
 3. **Script-driven** — Author JSON scenarios and suites; run them with `webmobai-scenario`, `webmobai-suite`, or record them interactively with `webmobai-codegen`.
 
 The shared engine is built on **Playwright** (Chromium / Firefox / WebKit) wrapped by a thin TypeScript server (`mcp-server/`).
 
 The project's distinctive feature is **AI-leveraged self-healing**: every selector failure returns a structured diagnostic — prior fingerprint, ranked candidate replacements, page-state triage — so an AI client can retry intelligently rather than just giving up.
 
-**Distributed as five CLI binaries** (npm package `webmobai-mcp`):
+**Distributed as six CLI binaries** (npm package `webmobai-mcp`):
 
 | Binary | What it does |
 |---|---|
-| `webmobai-mcp` | MCP server (stdio) — exposes all 43 tools to Claude Desktop, Claude Code, etc. |
+| `webmobai-mcp` | MCP server (stdio) — exposes all 49 tools to Claude Desktop, Claude Code, etc. |
 | `webmobai-test <url>` | Standalone auto-test — explores a URL and produces a full audit report |
 | `webmobai-scenario <file>` | Run a single JSON scenario, emit HTML + JUnit + trace.zip |
 | `webmobai-suite <file>` | Run a collection of scenarios with parallelism, sharding, tag filters |
 | `webmobai-codegen <url>` | Record a session interactively, emit a starter Scenario JSON |
+| `webmobai-monitor <url>` | Sprint 17. Run `webmobai-test` on a recurring interval; optional `--alert-webhook` POSTs regression bundles. |
 
 ---
 
@@ -205,17 +206,18 @@ All artifacts go to a per-session temp dir (`<os.tmpdir()>/webmobai-<id>/`) so c
 
 - **Tauri 2.0 shell** — React 19 + Vite 6 + Tailwind v4 + Zustand
 - Single-click testing, real-time action log, screenshot gallery (via `convertFileSrc` + asset protocol scoped to `$TEMP/webmobai-*/**`), dark/light/system theme
+- **Sprint 14 polish**: settings + Configuration persist across restarts (Zustand `persist`); fullscreen screenshot lightbox with ←/→ navigation; Open / Reveal-in-Finder on each screenshot; toast notifications; ⌘↵ / ⌘. / ⌘1–7 shortcuts; clickable WCAG references + copy-selector on a11y findings; Action Log status filter + JSON export
 - macOS `.dmg` via GitHub Releases; MCP server published as `webmobai-mcp` on npm
 - CI: GitHub Actions builds for `aarch64-apple-darwin` and `x86_64-apple-darwin`, installs Chromium + Firefox + WebKit, runs the full test suite on every push/PR
 
 ### 2.20 Test coverage
 
-**158 tests** across 20 test files in `mcp-server/test/`:
+**200 tests** across 23 test files in `mcp-server/test/`:
 
 | Suite | Cases | What it covers |
 |---|---|---|
 | `page-analyzer.test.ts` | 5 | A11y audit rules, axe-core integration, accessibility tree |
-| `browser-manager.test.ts` | 4 | Network error tracking, TTI/Web Vitals shape |
+| `browser-manager.test.ts` | 6 | Network error tracking, TTI/Web Vitals shape, bounded error buffer |
 | `run-config.test.ts` | 7 | SessionConfig parsing, defaults, feature toggles |
 | `assertion-tools.test.ts` | 12 | All 5 assertion verbs incl. auto-wait |
 | `route-tools.test.ts` | 5 | Fulfill/abort/continue, unroute |
@@ -234,8 +236,43 @@ All artifacts go to a per-session temp dir (`<os.tmpdir()>/webmobai-<id>/`) so c
 | `seo.test.ts` | 6 | Title length, missing meta, multi-H1, invalid JSON-LD |
 | `pwa.test.ts` | 7 | Manifest fields, SW registration, offline |
 | `debug.test.ts` | 5 | Selector descriptions, zero-match hints |
+| `ai.test.ts` | 17 | AI config gating, disabled-path on every AI tool, Scenario JSON validation incl. code-fence stripping and unknown-step rejection, AI-summary markdown renderer incl. injection-safe HTML escaping |
+| `sprint16.test.ts` | 9 | BaselineStore archive-on-overwrite, listing, pruning beyond `maxVersions`, restore-with-rearchive, nested-name scoping, restore rejection on unknown timestamp; Lighthouse `LighthouseUnavailableError` + markdown formatter |
+| `sprint17.test.ts` | 14 | `monitor-cli` parseInterval (ms/s/m/h, decimals, malformed), parseArgs (URL required, `--flag=value` / `--flag value`, positional config), `runMonitorLoop` with `--once` runs exactly one iteration and stops between iterations on signal, BrowserManager idle-timeout configuration |
 
 1 test is skipped locally (WebKit-only), exercised in CI.
+
+### 2.21 AI intelligence layer (opt-in, Sprint 15)
+
+A small `src/ai/` module is the single place in the server that calls the
+Anthropic API. Every AI feature gates on `WEBMOBAI_ANTHROPIC_API_KEY` — with no
+key, the AI tools return a clean "set the key" message and the rest of the
+server is unchanged. System prompts are always sent with
+`cache_control: ephemeral` so repeat-task calls hit the prompt cache.
+
+| Capability | Tool | Notes |
+|---|---|---|
+| Visual-diff narration | `webmobai_explain_visual_diff` | Sends baseline + actual (+ optional diff mask) PNGs to Claude. Returns 2–6 short bullets describing what visibly changed and a severity tag (cosmetic / content / structural). No browser required. |
+| Executive audit summary | `webmobai_summarize_audit` | Rolls accumulated a11y / perf / console / test results into a prioritized markdown summary (Headline / Top fixes / What's working) under 350 words. Auto-test runner embeds this in `TestReportData.aiSummary` when a key is present; the desktop "Test Report" panel and the HTML report both render it. |
+| NL → Scenario | `webmobai_generate_scenario_from_prompt` | Generates a WebMobAI Scenario JSON from a natural-language description plus a snapshot of the current page (title, headings, top interactive elements). Output is **zod-validated** before return — bad model output throws loudly rather than producing a broken scenario. |
+
+Env vars: `WEBMOBAI_ANTHROPIC_API_KEY` (required to enable),
+`WEBMOBAI_AI_MODEL` (default `claude-opus-4-7`),
+`WEBMOBAI_AI_MAX_TOKENS` (default 2048).
+
+### 2.22 Monitoring & scheduling (Sprint 17)
+
+A binary, a desktop tab, and one extra report block — backed entirely by the
+existing `~/.webmobai/history.json` substrate and the existing `detectRegressions`
+helper.
+
+| Capability | Surface | Notes |
+|---|---|---|
+| Scheduled recurring runs | `webmobai-monitor <url> [config] [flags]` | Spawns the existing `auto-test.js` runner per iteration. Flags: `--interval=<duration>` (default 5 m), `--once`, `--alert-webhook=<url>` (POST regression bundle), `--config=<json>`. SIGINT-friendly: stops between runs. |
+| Webhook alerts | `--alert-webhook=<url>` | After each iteration, the monitor reads history, runs `detectRegressions` on the latest entry for the URL, and if any finding has severity `regression` POSTs `{url, latestRunId, timestamp, baselineRuns, regressions[]}` as JSON. Failures are logged but never crash the loop. |
+| Trend dashboard | Desktop **Monitors** tab (⌘7) | Reads history via the existing `shell:allow-execute` (`cat <home>/.webmobai/history.json`). URL picker, four sparklines (LCP / FCP / CLS / TTFB) plus error-count and a11y-count sparklines, and a 30-row run table. Refresh button re-reads the file. |
+| Baseline-vs-current report mode | Auto-emitted on every `webmobai-test` run with 2+ prior history entries | `TestReportData.historicalComparison` carries `{url, baselineRuns, findings[]}`. The HTML report renders a "vs historical baseline" table; the desktop **Test Report** panel mounts `<HistoricalComparison />`, which also fires a single destructive toast when real regressions appear. |
+| Idle session timeout | `BrowserManager` (Track D fold-in) | Optional `idleTimeoutMs` on `launch()` / `setIdleTimeout()`. The MCP dispatcher calls `bumpIdleTimer()` after every successful tool call. New `idle_timeout_ms` field on `webmobai_launch_browser`. Default disabled. |
 
 ---
 
@@ -256,19 +293,21 @@ These will **not** be in WebMobAI. Users wanting them should reach for the recom
 | Official Lighthouse perf score | Run `lighthouse` CLI directly — we complement, don't replace |
 | Browser extension testing | Playwright supports this; no UI for it here |
 | i18n translation coverage | translation-check, react-intl-cli |
-| Vision-model "what visually changed" explanations | Out of scope — needs a Claude API call from inside the server, which we don't do |
 
 ---
 
 ## 4. Roadmap / known limitations
 
-Most of the original gap analysis from v1.1.0 is closed. Remaining work:
+Most of the original gap analysis from v1.1.0 is closed. Sprint 16 closed
+four more items (✓). Remaining work:
+
+**Closed in Sprint 16**:
+- ✓ **TTI strict definition** — opt-in via `webmobai_get_performance_metrics { strict_tti: true }`. Waits for the 5-second long-task quiet window after FCP (Lighthouse's definition), up to 15 s total. Fast mode is still the default.
+- ✓ **CLS measurement window** — added `clsAtLoad`, the cumulative shift frozen 3 s after `load`. Side-by-side with the running `cls` so callers can see both.
+- ✓ **getLinks protocol-relative URLs** — `//cdn.foo/x` from a `file://` document is now caught explicitly.
+- ✓ **Lighthouse integration** — `webmobai_lighthouse_audit` (optional `lighthouse` + `chrome-launcher` deps). Returns the four official scores plus the lowest-scoring audits.
 
 **Still wanted**:
-- **TTI strict definition**. Current implementation uses the end of the last observed long task (or DOM content loaded as fallback). The Lighthouse definition is "first 5s quiet window after FCP" which requires waiting 5s+ past the last long task — we measure earlier than that for speed. Within ~10% on most pages.
-- **CLS measurement window**. Layout-shift entries accumulate over the entire session, not just the initial load. Long sessions inflate CLS. Capturing a "load CLS" snapshot at network-idle would be more faithful.
-- **getLinks protocol-relative URLs**. Currently filters to `http*` only, missing `//cdn.foo/x`. Low impact.
-- **Lighthouse integration**. We complement Lighthouse with our own per-axis tools; could also spawn `lighthouse --output=json` and merge into the report for the official score. Adds a heavy dep.
 - **WebKit-specific path coverage**. WebKit-skipped tests run in CI only. Some features (CDP-based throttling, real a11y tree) are Chromium-only by design.
 
 **Won't fix** (already accurate):
@@ -295,8 +334,12 @@ This file evolves alongside the codebase. Major capability waves:
 | 11 | SEO audit + broken-link crawl |
 | 12 | PWA audit (manifest, service worker, offline) |
 | 13 | Selector inspector + codegen CLI |
+| 14 | Desktop polish & persistence: state persistence (Zustand `persist`), fullscreen screenshot lightbox, toast notifications, keyboard shortcuts (⌘↵ / ⌘. / ⌘1–7), clickable WCAG references + copy-selector, Action Log filter + export, screenshot Open / Reveal-in-Finder. Hardening: bounded `BrowserManager` error buffers. |
+| 15 | AI intelligence layer (opt-in via `WEBMOBAI_ANTHROPIC_API_KEY`): Claude visual-diff narration, executive audit summarizer, NL → Scenario JSON generator. 3 new MCP tools, 1 new AI module (`src/ai/`), prompt caching, auto-test runner embeds the summary in the report. Track D: `server.ts` dispatcher table-driven refactor (~100 LOC saved). |
+| 16 | New testing capabilities: Lighthouse integration (opt-dep, official scores), PDF report export (Playwright `page.pdf`), versioned visual baselines (archive-on-overwrite + list/restore tools), perf accuracy fixes (load-CLS frozen 3 s past `load`, opt-in strict TTI). Protocol-relative link fix. Track D: `docs/SCENARIO_FORMAT.md` written. |
+| 17 | Monitoring & scheduling: new `webmobai-monitor` CLI (scheduled recurring runs, `--once` / `--interval` / `--alert-webhook`), desktop **Monitors** tab with sparkline trends + run table reading from history, this-run-vs-historical-median comparison embedded in every report (HTML + desktop), regression-detected toast. Track D: `BrowserManager` idle-close timer reset by the dispatcher. |
 
-Tool count: **25 → 43**. Binaries: **2 → 5**. Tests: **0 → 158**.
+Tool count: **25 → 49**. Binaries: **2 → 6**. Tests: **0 → 200**.
 
 ---
 
