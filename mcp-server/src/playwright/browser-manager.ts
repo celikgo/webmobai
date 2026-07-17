@@ -230,6 +230,14 @@ export class BrowserManager {
       );
     }
 
+    // Self-heal a clean install: download the engine on first use so every
+    // entrypoint (MCP server + all CLIs) works out of the box, not just
+    // webmobai-test. No-op once the browser is present.
+    const { ensureBrowserInstalled } = await import(
+      "../utils/ensure-browsers.js"
+    );
+    await ensureBrowserInstalled(browserName);
+
     logger.info(`Launching ${browserName} browser...`);
 
     // Chromium-only launch args; Firefox/WebKit ignore these silently in

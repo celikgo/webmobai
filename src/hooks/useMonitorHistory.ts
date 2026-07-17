@@ -62,7 +62,7 @@ export function useMonitorHistory() {
       const { Command } = await import("@tauri-apps/plugin-shell");
       const home = await homeDir();
       const historyPath = `${home.replace(/\/+$/, "")}/.webmobai/history.json`;
-      const result = await Command.create("cat", [historyPath]).execute();
+      const result = await Command.create("cat-history", [historyPath]).execute();
       if (result.code !== 0) {
         // Most likely the file doesn't exist yet — no runs have been recorded.
         setState({ entries: [], urls: [], loading: false, error: null });
