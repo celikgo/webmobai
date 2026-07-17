@@ -35,6 +35,8 @@ interface ParsedArgs {
   excludeTags: string[];
   reporter: "html" | "junit" | "both" | "none";
   outDir: string;
+  allowEmpty: boolean;
+  storageState?: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -48,6 +50,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     excludeTags: [],
     reporter: "both",
     outDir: process.cwd(),
+    allowEmpty: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -83,6 +86,12 @@ function parseArgs(argv: string[]): ParsedArgs {
       case "--out":
         args.outDir = resolve(next());
         break;
+      case "--allow-empty":
+        args.allowEmpty = true;
+        break;
+      case "--storage-state":
+        args.storageState = next();
+        break;
       case "-h":
       case "--help":
         die(0, helpText());
@@ -109,6 +118,8 @@ function helpText(): string {
     "  --exclude-tag T     exclude scenarios with this tag (repeatable)",
     "  --reporter R        html | junit | both | none (default both)",
     "  --out DIR           output directory for aggregate reports",
+    "  --allow-empty       treat a tag filter matching 0 scenarios as success (default: usage error)",
+    "  --storage-state F   run every scenario authenticated from a saved storageState JSON",
     "",
     "Exit codes: 0 = all pass, 1 = at least one scenario failed, 2 = usage error",
   ].join("\n");
@@ -125,6 +136,14 @@ async function main() {
   const { suite, runnables: allRunnables } = await loadSuite(args.suitePath);
   console.log(`Loaded suite "${suite.name}" (${allRunnables.length} scenarios)`);
 
+  // A --storage-state flag applies one saved session to every scenario that
+  // doesn't already specify its own, so the whole suite runs authenticated.
+  if (args.storageState) {
+    for (const r of allRunnables) {
+      r.scenario.storageState ??= args.storageState;
+    }
+  }
+
   let runnables = filterByTags(allRunnables, {
     includeTags: args.includeTags,
     excludeTags: args.excludeTags,
@@ -133,6 +152,18 @@ async function main() {
     console.log(
       `After tag filter: ${runnables.length} scenarios (include=[${args.includeTags.join(",")}] exclude=[${args.excludeTags.join(",")}])`,
     );
+    // A tag filter that reduces a non-empty suite to zero almost always means a
+    // mistyped tag. Without this guard the run would exit 0 having tested
+    // nothing — a green CI on an untested build. Distinguish this from a shard
+    // that legitimately received zero scenarios (handled after sharding below).
+    if (runnables.length === 0 && allRunnables.length > 0 && !args.allowEmpty) {
+      die(
+        2,
+        `Tag filter matched 0 of ${allRunnables.length} scenarios ` +
+          `(include=[${args.includeTags.join(",")}] exclude=[${args.excludeTags.join(",")}]). ` +
+          `This usually means a mistyped tag. Pass --allow-empty to treat an empty selection as success.`,
+      );
+    }
   }
   if (args.shard) {
     runnables = applyShard(runnables, args.shard);
@@ -141,6 +172,8 @@ async function main() {
     );
   }
   if (runnables.length === 0) {
+    // Reachable now only via sharding (a shard with no scenarios), an
+    // intentionally empty suite, or --allow-empty — all legitimate no-ops.
     console.log("No scenarios to run.");
     process.exit(0);
   }

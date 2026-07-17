@@ -25,6 +25,12 @@ export interface Scenario {
   browser?: "chromium" | "firefox" | "webkit";
   device?: string;
   continueOnFailure?: boolean;
+  /**
+   * Sprint 18: path to a Playwright storageState JSON captured from a prior
+   * logged-in session. When set, the scenario runs already authenticated, so
+   * steps can reach pages behind a login. Keep this file out of version control.
+   */
+  storageState?: string;
   steps: ScenarioStep[];
 }
 
@@ -77,6 +83,24 @@ export type ScenarioStep =
       description?: string;
     }
   | { type: "screenshot"; description?: string }
+  | {
+      // Sprint 18: persist the current (logged-in) session to a storageState
+      // file mid-scenario — e.g. after a login flow — so later runs can replay
+      // authenticated. The file holds session secrets; gitignore it.
+      type: "saveStorageState";
+      path: string;
+      description?: string;
+    }
+  | {
+      // Sprint 18: in headed mode, pause and wait for a human to complete a
+      // manual step (MFA code, CAPTCHA, SSO consent), then continue. In
+      // headless mode there is no human, so it is a clear no-op that records a
+      // warning. Typically paired with a following saveStorageState step.
+      type: "pauseForManual";
+      prompt?: string;
+      timeoutMs?: number;
+      description?: string;
+    }
   | {
       type: "route";
       pattern: string;

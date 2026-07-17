@@ -10,7 +10,8 @@
     "webmobai-scenario": "dist/scenario-cli.js",
     "webmobai-suite": "dist/suite-cli.js",
     "webmobai-codegen": "dist/codegen-cli.js",
-    "webmobai-monitor": "dist/monitor-cli.js"
+    "webmobai-monitor": "dist/monitor-cli.js",
+    "webmobai-doctor": "dist/doctor-cli.js"
   },
   "scripts": {
     "build": "tsc",

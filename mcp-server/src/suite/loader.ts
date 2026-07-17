@@ -98,5 +98,6 @@ function applyDefaults(scenario: Scenario, defaults?: SuiteDefaults): Scenario {
     device: scenario.device ?? defaults.device,
     continueOnFailure:
       scenario.continueOnFailure ?? defaults.continueOnFailure,
+    storageState: scenario.storageState ?? defaults.storageState,
   };
 }

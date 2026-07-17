@@ -24,6 +24,11 @@ export interface SuiteDefaults {
   browser?: "chromium" | "firefox" | "webkit";
   device?: string;
   continueOnFailure?: boolean;
+  /**
+   * Sprint 18: a storageState file applied to every scenario in the suite that
+   * doesn't set its own — so a whole CI suite reuses one logged-in session.
+   */
+  storageState?: string;
 }
 
 export type SuiteEntry = SuitePathEntry | SuiteInlineEntry;

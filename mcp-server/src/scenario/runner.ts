@@ -76,6 +76,23 @@ export async function runScenario(
   };
 }
 
+/**
+ * A tool handler signals success with a known text prefix and signals failure
+ * either by throwing or by returning an error/FAIL string. Treat anything that
+ * is not an explicit success as a step failure — otherwise a capture error, a
+ * missing baseline, or a failed route install slips through as PASS, which is
+ * the "reports green on a red build" defect this runner must never have.
+ */
+function requireToolSuccess(
+  result: { content: { type: "text"; text: string }[] },
+  successPrefixes: string[],
+): void {
+  const text = result.content[0]?.text ?? "";
+  if (!successPrefixes.some((p) => text.startsWith(p))) {
+    throw new Error(text || "Tool returned no result");
+  }
+}
+
 async function executeStep(
   step: ScenarioStep,
   browser: BrowserManager,
@@ -115,8 +132,35 @@ async function executeStep(
     case "screenshot":
       await browser.screenshot(step.description ?? "scenario step");
       return;
-    case "route":
-      await handleRouteTool(
+    case "saveStorageState":
+      // Persist the current (typically just-logged-in) session for later
+      // authenticated replays. Never log the path here — it's a secrets file.
+      await browser.saveStorageState(step.path);
+      return;
+    case "pauseForManual": {
+      const promptMsg =
+        step.prompt ?? "Complete the manual step (MFA / CAPTCHA / SSO), then wait.";
+      if (browser.isHeadless) {
+        // No human is watching a headless run — waiting would just burn time
+        // and still fail. Record a clear warning and continue immediately.
+        logger.warn(
+          `pauseForManual skipped in headless mode: "${promptMsg}". ` +
+            "Run headed (or pre-save a storageState) so a human can complete it.",
+        );
+        return;
+      }
+      // Headed: give the human a bounded window to act, then continue. We do a
+      // timed wait rather than blocking on stdin so the same runner is safe
+      // under the MCP server and parallel suite workers (which have no TTY).
+      const waitMs = Math.min(Math.max(step.timeoutMs ?? 30_000, 0), 300_000);
+      logger.info(
+        `pauseForManual: ${promptMsg} — continuing in ${Math.round(waitMs / 1000)}s.`,
+      );
+      await page.waitForTimeout(waitMs);
+      return;
+    }
+    case "route": {
+      const result = await handleRouteTool(
         "webmobai_route",
         {
           pattern: step.pattern,
@@ -127,7 +171,12 @@ async function executeStep(
         },
         browser,
       );
+      // A failed route install ("Error executing …") would otherwise be
+      // silently ignored, leaving the mock uninstalled while the step passes
+      // and later steps hit the real backend.
+      requireToolSuccess(result, ["Route active"]);
       return;
+    }
     case "visualSnapshot": {
       const result = await handleVisualTool(
         "webmobai_visual_snapshot",
@@ -143,8 +192,11 @@ async function executeStep(
         },
         browser,
       );
-      const text = result.content[0]?.text ?? "";
-      if (text.startsWith("FAIL")) throw new Error(text);
+      // The visual tool signals a real diff with "FAIL" but signals a capture
+      // error / missing baseline / bad selector with "Error executing …" or a
+      // validation string — none of which start with "FAIL". Whitelist the two
+      // success prefixes so only an explicit pass is a pass.
+      requireToolSuccess(result, ["PASS", "Visual baseline"]);
       return;
     }
     case "assertVisible":
@@ -157,8 +209,7 @@ async function executeStep(
         .toLowerCase()}`;
       const args = scenarioAssertionArgs(step);
       const result = await handleAssertionTool(toolName, args, browser);
-      const text = result.content[0]?.text ?? "";
-      if (text.startsWith("FAIL")) throw new Error(text);
+      requireToolSuccess(result, ["PASS"]);
       return;
     }
     default: {
@@ -232,6 +283,10 @@ function stepLabel(step: ScenarioStep): string {
           : `Wait ${step.timeoutMs ?? 10000}ms`;
     case "screenshot":
       return `Screenshot${step.description ? ` (${step.description})` : ""}`;
+    case "saveStorageState":
+      return "Save authenticated session (storageState)";
+    case "pauseForManual":
+      return `Pause for manual step${step.prompt ? ` (${step.prompt})` : ""}`;
     case "route":
       return `Route ${step.pattern} → ${step.action}`;
     case "visualSnapshot":

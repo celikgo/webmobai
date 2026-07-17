@@ -45,3 +45,8 @@ src-tauri/gen/
 *.tsbuildinfo
 .pnp
 .pnp.js
+
+# WebMobAI saved auth sessions (contain cookies/tokens — never commit)
+auth.json
+*.auth.json
+*storage-state*.json

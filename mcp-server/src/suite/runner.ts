@@ -107,6 +107,7 @@ async function runOne(
       device: entry.scenario.device,
       viewport: entry.scenario.viewport,
       recordVideo: false,
+      storageStatePath: entry.scenario.storageState,
     });
     const result = await runScenario(entry.scenario, browser);
     onProgress?.({
