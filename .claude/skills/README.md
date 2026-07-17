@@ -1,6 +1,6 @@
 # WebMobAI Skills
 
-This directory contains project-scoped Claude Code skills for **WebMobAI** — the AI-leveraged end-to-end web testing framework that pairs a Tauri desktop app, four CLI binaries, and an MCP server exposing **43 Playwright-driven web testing tools**.
+This directory contains project-scoped Claude Code skills for **WebMobAI** — the AI-leveraged end-to-end web testing framework that pairs a Tauri desktop app, seven binaries (six CLIs + the MCP server), and an MCP server exposing **51 Playwright-driven web testing tools**.
 
 Skills here teach Claude *how* to drive WebMobAI's MCP tools cohesively for common QA jobs. Each skill is a self-contained workflow: when the user describes a job, the matching skill is auto-invoked and Claude follows its documented steps.
 
@@ -18,6 +18,15 @@ For installation, the scenario / suite formats, and the full tool reference, see
 | [`testing-web-forms`](./testing-web-forms/SKILL.md) | Exercise a form or form-driven flow — happy path, validation cases, error states, form a11y. | Per-case pass/fail, screenshots, report |
 | [`exploring-web-app`](./exploring-web-app/SKILL.md) | Discover an unfamiliar site's surface area — crawl internal links, build a map, recommend follow-up skills. | Site map, page health, suggested next skills |
 | [`regression-web-visual`](./regression-web-visual/SKILL.md) | Compare two states of a site (baseline vs current, staging vs prod) — matched screenshots, structural-change heuristics. | Side-by-side screenshots, flagged-page list |
+| [`debugging-web-selectors`](./debugging-web-selectors/SKILL.md) | A selector stopped matching / is ambiguous — diagnose it and get ranked replacement candidates from `describe_selector` + the self-healing triage. | Selector diagnosis + ranked, verified fix |
+| [`verifying-web-flows`](./verifying-web-flows/SKILL.md) | A hard pass/fail acceptance test of a flow via the five `assert_*` verbs (auto-wait + self-healing on fail). | Per-assertion pass/fail, optional report |
+| [`testing-web-error-states`](./testing-web-error-states/SKILL.md) | Test failure behavior — API 500s, empty/aborted responses, offline, blocked third-party — via `route`/`unroute` + network throttle. | Per-fault pass/fail, screenshots |
+| [`auditing-web-security`](./auditing-web-security/SKILL.md) | Security-hygiene audit (CSP, mixed content, cookie flags). Not a pentest. | Grouped security findings, report |
+| [`auditing-web-seo`](./auditing-web-seo/SKILL.md) | On-page SEO/content audit (title/meta/OG/canonical/headings) + same-origin broken-link check. | Grouped SEO findings + broken-link list |
+| [`monitoring-web-regressions`](./monitoring-web-regressions/SKILL.md) | Track a URL over time — read run history, check the latest run vs the historical median, stand up scheduled monitoring. | Regression verdict + monitor setup |
+| [`authoring-web-scenarios`](./authoring-web-scenarios/SKILL.md) | Turn a live exploration or plain-English description into a reusable, deterministic JSON scenario for `-scenario`/`-suite`. | Reviewed scenario JSON |
+| [`auditing-web-pwa`](./auditing-web-pwa/SKILL.md) | Check PWA/installability readiness — manifest, service worker, HTTPS, offline. | Grouped PWA findings, report |
+| [`auditing-web-lighthouse`](./auditing-web-lighthouse/SKILL.md) | Official Google Lighthouse 0-100 category scores (needs the optional `lighthouse` dep). | Category score table + lowest audits |
 
 ## Picking the Right Skill
 
@@ -100,7 +109,7 @@ The tool enforces three values; use them consistently:
 
 ## Underlying Tool Reference
 
-All skills are thin orchestrations over the WebMobAI MCP tools. **43 tools** across these categories — see [USER_MANUAL.md §7](../../USER_MANUAL.md#7-mcp-tool-reference) for the full list with descriptions.
+All skills are thin orchestrations over the WebMobAI MCP tools. **51 tools** across these categories — see [USER_MANUAL.md §7](../../USER_MANUAL.md#7-mcp-tool-reference) for the full list with descriptions.
 
 | Category | Count | Examples |
 |---|---|---|

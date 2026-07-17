@@ -5,7 +5,7 @@
  *
  * Env vars:
  *   WEBMOBAI_ANTHROPIC_API_KEY  — required to enable AI features
- *   WEBMOBAI_AI_MODEL           — model ID (default: claude-opus-4-7)
+ *   WEBMOBAI_AI_MODEL           — model ID (default: claude-opus-4-8)
  *   WEBMOBAI_AI_MAX_TOKENS      — default max_tokens per call (default: 2048)
  */
 
@@ -20,7 +20,7 @@ export function getAiConfig(): AiConfig {
   const rawKey = process.env.WEBMOBAI_ANTHROPIC_API_KEY?.trim() ?? "";
   const apiKey = rawKey.length > 0 ? rawKey : null;
   const model =
-    process.env.WEBMOBAI_AI_MODEL?.trim() || "claude-opus-4-7";
+    process.env.WEBMOBAI_AI_MODEL?.trim() || "claude-opus-4-8";
   const maxTokens = Number.parseInt(
     process.env.WEBMOBAI_AI_MAX_TOKENS ?? "2048",
     10,

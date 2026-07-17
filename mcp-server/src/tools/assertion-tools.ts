@@ -76,7 +76,7 @@ export function getAssertionToolDefinitions() {
     {
       name: "webmobai_assert_url",
       description:
-        "Assert that the current page URL matches an expected substring or pattern. Use this after navigation, form submit, or redirect to verify the user landed where you expected.",
+        "Assert that the current page URL matches an expected substring or pattern. Use this after navigation, form submit, or redirect to verify the user landed where you expected. You must supply `contains`, `pattern`, or both — an assertion with neither verifies nothing and is rejected.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -91,6 +91,7 @@ export function getAssertionToolDefinitions() {
           },
           timeout_ms: { type: "number", default: DEFAULT_TIMEOUT_MS },
         },
+        anyOf: [{ required: ["contains"] }, { required: ["pattern"] }],
       },
     },
     {
@@ -172,6 +173,13 @@ export async function handleAssertionTool(
       case "webmobai_assert_url": {
         const contains = args.contains as string | undefined;
         const pattern = args.pattern as string | undefined;
+        // With neither matcher the predicate below is `true && true`, so the
+        // assertion would pass while verifying nothing. Require at least one.
+        if (contains === undefined && pattern === undefined) {
+          return fail(
+            "FAIL — assert_url requires 'contains' or 'pattern'; neither was supplied, so there is nothing to verify.",
+          );
+        }
         const re = pattern ? new RegExp(pattern) : undefined;
         let lastUrl = "";
         await waitFor(

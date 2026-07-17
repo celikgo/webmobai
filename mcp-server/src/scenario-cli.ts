@@ -23,10 +23,32 @@ import { generateJunitReport } from "./utils/junit-generator.js";
 import type { Scenario } from "./scenario/types.js";
 import type { TestReportData, TestResult } from "./types.js";
 
+function parseArgs(argv: string[]): {
+  path?: string;
+  storageState?: string;
+  saveStorageState?: string;
+} {
+  const out: { path?: string; storageState?: string; saveStorageState?: string } = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--storage-state") {
+      out.storageState = argv[++i];
+    } else if (a === "--save-storage-state") {
+      out.saveStorageState = argv[++i];
+    } else if (!a.startsWith("-") && !out.path) {
+      out.path = a;
+    }
+  }
+  return out;
+}
+
 async function main() {
-  const path = process.argv[2];
+  const opts = parseArgs(process.argv.slice(2));
+  const path = opts.path;
   if (!path) {
-    console.error("Usage: webmobai-scenario <scenario.json>");
+    console.error(
+      "Usage: webmobai-scenario <scenario.json> [--storage-state <auth.json>] [--save-storage-state <auth.json>]",
+    );
     process.exit(2);
   }
   const abs = resolve(path);
@@ -52,6 +74,10 @@ async function main() {
     process.exit(2);
   }
 
+  // A --storage-state flag overrides the scenario's own field, so the same
+  // scenario can run unauthenticated locally and authenticated in CI.
+  const storageStatePath = opts.storageState ?? scenario.storageState;
+
   const sessionDir = defaultSessionDir();
   const browser = new BrowserManager(sessionDir);
   await browser.launch({
@@ -60,11 +86,21 @@ async function main() {
     browser: scenario.browser,
     device: scenario.device,
     recordVideo: false,
+    storageStatePath,
   });
 
   console.log(`Running scenario "${scenario.name}" against ${scenario.url}`);
 
   const result = await runScenario(scenario, browser);
+
+  // Persist the session after the run when asked, so a login flow captured
+  // here can be replayed authenticated later. Never print the file contents.
+  if (opts.saveStorageState) {
+    await browser.saveStorageState(opts.saveStorageState);
+    console.log(
+      `Saved session storageState to ${opts.saveStorageState} (keep it out of version control).`,
+    );
+  }
 
   // Map to TestReportData so we get the same HTML/JUnit artifacts as a
   // standard auto-test run. Each step becomes a TestResult.

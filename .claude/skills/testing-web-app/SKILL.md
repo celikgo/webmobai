@@ -18,6 +18,15 @@ Use it as the default whenever the user asks for "a full test" or "audit" of a w
 - Form submission flows → `testing-web-forms`
 - Visual diff vs baseline → `regression-web-visual`
 - Crawl/discover surface → `exploring-web-app`
+- Pass/fail flow assertions → `verifying-web-flows`
+- A broken/ambiguous selector → `debugging-web-selectors`
+- Failure/offline/error-state behavior → `testing-web-error-states`
+- Security hygiene (CSP/cookies/mixed content) → `auditing-web-security`
+- SEO + broken links → `auditing-web-seo`
+- PWA / installability → `auditing-web-pwa`
+- Official Lighthouse 0-100 scores → `auditing-web-lighthouse`
+- Author a reusable scenario from exploration → `authoring-web-scenarios`
+- Track regressions over time → `monitoring-web-regressions`
 
 ## When to Use
 

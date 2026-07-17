@@ -67,7 +67,7 @@ export function Header({ onOpenSettings }: HeaderProps) {
         // Pre-flight: verify `node` is on PATH so we can give the user a clear
         // message instead of a silent failure.
         try {
-          const probe = await Command.create("node", ["--version"]).execute();
+          const probe = await Command.create("node-version", ["--version"]).execute();
           if (probe.code !== 0) throw new Error(probe.stderr || "exit " + probe.code);
         } catch (probeErr) {
           addAction({
@@ -85,7 +85,7 @@ export function Header({ onOpenSettings }: HeaderProps) {
         // as argv[2] — to avoid duplication and to keep the JSON small.
         const { url: _ignored, ...runConfig } = config;
         void _ignored;
-        const cmd = Command.create("node", [
+        const cmd = Command.create("node-run", [
           autoTestPath,
           url,
           JSON.stringify(runConfig),

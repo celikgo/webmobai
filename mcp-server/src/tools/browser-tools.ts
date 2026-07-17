@@ -48,7 +48,28 @@ export function getBrowserToolDefinitions() {
             description:
               "Sprint 17: auto-close the browser after this many ms of no tool calls (e.g. 1800000 for 30 minutes). Default: disabled (no idle close). The dispatcher resets the timer after every successful tool call.",
           },
+          storage_state_path: {
+            type: "string",
+            description:
+              "Path to a Playwright storageState JSON saved from a prior logged-in session (cookies + localStorage). When set, the browser starts already authenticated so every tool runs behind the login. Create one with webmobai_save_storage_state after logging in. The file holds session secrets — keep it out of version control.",
+          },
         },
+      },
+    },
+    {
+      name: "webmobai_save_storage_state",
+      description:
+        "Save the current browser session (cookies + localStorage) to a Playwright storageState JSON file. Use after logging in so a later launch can reuse the session via storage_state_path — the 'log in once, replay authenticated' flow. Requires a launched browser. WARNING: the written file contains session tokens; treat it as a credential and add it to .gitignore.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          path: {
+            type: "string",
+            description:
+              "Absolute or relative file path to write the storageState JSON to (e.g. 'auth.json').",
+          },
+        },
+        required: ["path"],
       },
     },
     {
@@ -179,6 +200,7 @@ export async function handleBrowserTool(
           (args.browser as "chromium" | "firefox" | "webkit" | undefined) ??
           "chromium";
         const device = args.device as string | undefined;
+        const storageStatePath = args.storage_state_path as string | undefined;
         await browserManager.launch({
           headless: (args.headless as boolean) ?? false,
           viewport: {
@@ -189,14 +211,37 @@ export async function handleBrowserTool(
           browser: browserName,
           device,
           idleTimeoutMs: args.idle_timeout_ms as number | undefined,
+          storageStatePath,
         });
         const desc = device
           ? `${browserName} emulating ${device}`
           : browserName;
+        // Never echo the storageState path here — it points at a secrets file.
+        const profileNote = storageStatePath
+          ? "The browser started from a saved authenticated session (already logged in)."
+          : "The browser has a clean profile — no cookies, cache, or extensions.";
         return text(
           `Browser launched successfully (${desc}).\n` +
             "A window is now open. You can interact with it using the other webmobai tools.\n" +
-            "The browser has a clean profile — no cookies, cache, or extensions.",
+            profileNote,
+        );
+      }
+
+      case "webmobai_save_storage_state": {
+        if (!browserManager.isLaunched) {
+          return text(
+            "Cannot save storage state: no browser is launched. Launch a browser and log in first, then call this tool.",
+          );
+        }
+        const savePath = args.path as string | undefined;
+        if (!savePath) {
+          return text("`path` is required — where to write the storageState JSON.");
+        }
+        await browserManager.saveStorageState(savePath);
+        return text(
+          `Saved the current session to ${savePath}.\n` +
+            "Reuse it on a later launch via storage_state_path (or --storage-state) to start already logged in.\n" +
+            "⚠️ This file contains session tokens — add it to .gitignore and never commit or share it.",
         );
       }
 

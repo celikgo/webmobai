@@ -5,8 +5,10 @@
  * Design rules:
  *   - Never throw when the AI is simply disabled — callers check `isAiEnabled()`
  *     first and return a graceful "set the API key" message.
- *   - Always cache the system prompt (cache_control: ephemeral) so repeated
- *     calls of the same task type pay only one cache-write and many cache-reads.
+ *   - Mark the system prompt cache_control: ephemeral. NOTE: prompt caching only
+ *     kicks in once the cached prefix exceeds the model's minimum (4096 tokens on
+ *     Opus 4.8). Today's task prompts are well under that, so this is currently a
+ *     no-op that costs nothing and starts saving automatically if the prompts grow.
  *   - The SDK client is lazy-instantiated and memoized so tests can reset it.
  */
 
@@ -85,8 +87,10 @@ export async function complete(opts: CompleteOptions): Promise<CompleteResult> {
       ? [{ type: "text", text: opts.userContent }]
       : opts.userContent;
 
-  // System prompt as a single text block with cache_control so repeat tasks of
-  // the same kind hit the prompt cache. ~90% input cost reduction on hits.
+  // System prompt as a single text block with cache_control. Repeat tasks of
+  // the same kind hit the prompt cache once the system prompt is large enough to
+  // cache (see the model minimum noted in the file header); below that it's a
+  // harmless no-op rather than the "~90% cost reduction" it would be on a large prefix.
   const system = [
     {
       type: "text" as const,

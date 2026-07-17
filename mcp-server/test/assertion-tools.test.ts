@@ -28,6 +28,26 @@ function getText(result: { content: { type: string; text: string }[] }): string 
   return result.content[0]?.text ?? "";
 }
 
+describe("webmobai_assert_url — vacuous-pass guard (B5)", () => {
+  it("fails when neither contains nor pattern is supplied", async () => {
+    const b = await setup();
+    const r = await handleAssertionTool("webmobai_assert_url", {}, b);
+    // Must not vacuously pass: with no matcher there is nothing to verify.
+    expect(getText(r)).toContain("FAIL");
+    expect(getText(r)).not.toContain("PASS");
+  });
+
+  it("still passes when a matcher is supplied and holds", async () => {
+    const b = await setup();
+    const r = await handleAssertionTool(
+      "webmobai_assert_url",
+      { contains: "assertion-target" },
+      b,
+    );
+    expect(getText(r)).toContain("PASS");
+  });
+});
+
 describe("webmobai_assert_visible", () => {
   it("passes for a visible element", async () => {
     const b = await setup();

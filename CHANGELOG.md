@@ -2,6 +2,43 @@
 
 All notable changes to WebMobAI will be documented in this file.
 
+## [1.4.0] - 2026-07-17
+
+Sprint 18 — get past the login wall, plus correctness and packaging hardening from the first full audit.
+
+- **MCP tools:** 50 → **51** (added `webmobai_save_storage_state`)
+- **CLI binaries:** 6 → **7** (added `webmobai-doctor`, a preflight environment check)
+- **Tests:** 200 → **214** (+14, covering the fixes and new features)
+- **No breaking changes** to existing scenarios, suites, or MCP tool surfaces.
+
+### Added
+- **Authenticated sessions (storageState).** Launch already logged-in by loading a saved Playwright storageState:
+  `storage_state_path` on `webmobai_launch_browser`, the new `webmobai_save_storage_state` tool, a `storageState`
+  field + `saveStorageState` scenario step, `SuiteDefaults.storageState`, and `--storage-state` /
+  `--save-storage-state` CLI flags. Session files are treated as secrets — never echoed into responses/logs, and
+  gitignored by default.
+- **`pauseForManual` scenario step** — in headed mode, waits for a human to complete MFA/CAPTCHA/SSO, then continues
+  (typically before a `saveStorageState`); a clear no-op in headless.
+- **`webmobai-doctor`** — preflight check for Node version, Playwright browser install (with the exact
+  `npx playwright install` command), the optional Lighthouse dependency, the AI API key, and a storageState file's
+  validity/expiry.
+
+### Fixed
+- **False-green reporting (audit B3–B6).** The scenario runner now treats any non-success tool result as a step
+  failure (a failed `route` install or a `visualSnapshot` capture error no longer passes); `webmobai-suite` exits
+  non-zero when a tag filter matches zero scenarios (`--allow-empty` to opt out); `assert_url` with no matcher is
+  rejected instead of vacuously passing; JUnit XML strips XML-illegal control chars so one bad byte can't corrupt the
+  whole file.
+- **Stale AI default model** bumped `claude-opus-4-7` → `claude-opus-4-8`; corrected the prompt-cache comment.
+- **Clean-install browser launch (audit B2).** `BrowserManager.launch()` now downloads the requested Playwright
+  engine on first use, so the MCP server and every CLI work out of the box — previously only `webmobai-test`
+  self-installed and the others crashed with "Executable doesn't exist" on a fresh `npm install -g`.
+- **Desktop app packaging (audit B1).** The Tauri shell capability had no command scope, so in a packaged build every
+  Test / monitor-history / reveal / open-report action was rejected and the app was non-functional. Replaced with a
+  scoped allow-list for `node` / `cat` / `open` with validated arguments (not `args: true`), and widened the
+  `shell.open` scope to local `file://` paths so report/PDF/screenshot open correctly.
+- **Documentation counts** corrected across README/FEATURES/USER_MANUAL/skills (tool and binary counts were drifted).
+
 ## [1.3.0] - 2026-05-28
 
 Four sprints (14–17) covering desktop polish, an opt-in Claude API layer,

@@ -46,6 +46,24 @@ describe("scenario runner", () => {
     expect(result.results.every((r) => r.status === "pass")).toBe(true);
   });
 
+  it("marks a visualSnapshot step as failed when the tool errors, not passed (B3)", async () => {
+    const b = await setup();
+    const scenario: Scenario = {
+      name: "Visual step with a broken selector",
+      url: fixtureUrl("scenario-form.html"),
+      steps: [
+        { type: "assertVisible", selector: "h1" },
+        // No baseline_dir → the visual tool returns "…are required." (an error
+        // string that does not start with "FAIL"). Before the fix this slipped
+        // through as PASS — reporting green on a broken check.
+        { type: "visualSnapshot", name: "broken", selector: "#does-not-exist" },
+      ],
+    };
+    const result = await runScenario(scenario, b);
+    expect(result.summary.failed).toBe(1);
+    expect(result.results[1]?.status).toBe("fail");
+  });
+
   it("halts on first failure and marks subsequent steps as skipped", async () => {
     const b = await setup();
     const scenario: Scenario = {

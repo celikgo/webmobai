@@ -6,11 +6,7 @@
  * Outputs JSON lines to stdout for the frontend to consume.
  */
 
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { BrowserManager, defaultSessionDir } from "./playwright/browser-manager.js";
 import { PageAnalyzer } from "./playwright/page-analyzer.js";
@@ -25,8 +21,6 @@ import {
 import { isAiEnabled } from "./ai/client.js";
 import { summarizeAudit } from "./ai/audit-summarizer.js";
 import type { TestReportData, TestResult, AccessibilityIssue } from "./types.js";
-
-const execFileAsync = promisify(execFile);
 
 const url = process.argv[2];
 if (!url) {
@@ -61,28 +55,18 @@ function action(
 async function ensureChromiumInstalled() {
   if (existsSync(chromium.executablePath())) return;
 
+  // Stream a "downloading" message to the desktop action log, then delegate to
+  // the shared installer (also used by BrowserManager.launch for every other
+  // entrypoint) so the CLI-locating logic lives in one place.
   action(
     "info",
     "First run — downloading Chromium (~170MB). This only happens once.",
     "running",
   );
-
-  // Locate playwright's CLI relative to this file. Works in both the dev
-  // layout (mcp-server/dist/auto-test.js next to mcp-server/node_modules/...)
-  // and the bundled layout (Resources/_up_/mcp-server/dist + node_modules).
-  const here = dirname(fileURLToPath(import.meta.url));
-  const cliPath = resolve(here, "..", "node_modules", "playwright", "cli.js");
-
-  if (!existsSync(cliPath)) {
-    throw new Error(
-      `Cannot find Playwright CLI at ${cliPath}. The runner's node_modules is missing — reinstall the app.`,
-    );
-  }
-
-  await execFileAsync(process.execPath, [cliPath, "install", "chromium"], {
-    timeout: 10 * 60 * 1000,
-  });
-
+  const { ensureBrowserInstalled } = await import(
+    "./utils/ensure-browsers.js"
+  );
+  await ensureBrowserInstalled("chromium");
   action("info", "Chromium installed", "success");
 }
 

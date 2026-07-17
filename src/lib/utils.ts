@@ -59,16 +59,21 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 export async function openExternal(target: string): Promise<void> {
   if (isTauri()) {
     const { open } = await import("@tauri-apps/plugin-shell");
-    await open(target);
+    // Local report/PDF/screenshot paths are absolute filesystem paths; wrap
+    // them as file:// URLs so they pass the shell.open scope. URLs
+    // (http/https/mailto/tel) already carry a scheme and pass through.
+    const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(target);
+    await open(hasScheme ? target : "file://" + target);
   } else if (typeof window !== "undefined") {
     window.open(target, "_blank", "noopener,noreferrer");
   }
 }
 
 // Reveal a file in Finder (macOS) using `open -R`, which highlights the file in
-// its containing folder. Relies on the already-granted shell:allow-execute.
+// its containing folder. Uses the scoped "open-reveal" shell command (see
+// src-tauri/capabilities/default.json).
 export async function revealInFinder(path: string): Promise<void> {
   if (!isTauri()) return;
   const { Command } = await import("@tauri-apps/plugin-shell");
-  await Command.create("open", ["-R", path]).execute();
+  await Command.create("open-reveal", ["-R", path]).execute();
 }

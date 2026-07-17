@@ -10,11 +10,12 @@ jobs:
   check-mcp-server:
     name: MCP Server (TypeScript)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: mcp-server/package-lock.json
       - name: Install dependencies
@@ -33,11 +34,12 @@ jobs:
   check-frontend:
     name: Frontend (React + TypeScript)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -55,14 +57,20 @@ jobs:
         include:
           - platform: macos-latest
             target: aarch64-apple-darwin
-          - platform: macos-13
+          # Cross-compile the Intel build on the Apple-Silicon runner — the
+          # macos-13 (Intel) hosted runners are unavailable to this account and
+          # the job otherwise queues for the 24h maximum. Safe: all shipped
+          # mcp-server production deps are arch-independent and fsevents (via
+          # Playwright) is a universal binary.
+          - platform: macos-latest
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -72,6 +80,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
       - name: Install frontend dependencies
         run: npm ci
       - name: Install MCP server
@@ -84,7 +93,7 @@ jobs:
         with:
           args: --target ${{ matrix.target }}
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: webmobai-${{ matrix.target }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/

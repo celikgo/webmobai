@@ -63,9 +63,9 @@ describe("AI config", () => {
     expect(isAiEnabled()).toBe(false);
   });
 
-  it("uses claude-opus-4-7 as the default model", () => {
+  it("uses claude-opus-4-8 as the default model", () => {
     process.env.WEBMOBAI_ANTHROPIC_API_KEY = "sk-test";
-    expect(getAiConfig().model).toBe("claude-opus-4-7");
+    expect(getAiConfig().model).toBe("claude-opus-4-8");
   });
 
   it("respects WEBMOBAI_AI_MODEL and WEBMOBAI_AI_MAX_TOKENS overrides", () => {

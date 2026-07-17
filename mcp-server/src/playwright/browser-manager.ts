@@ -9,6 +9,7 @@ import {
   type BrowserType,
 } from "playwright";
 import { mkdir } from "fs/promises";
+import { existsSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { logger } from "../utils/logger.js";
@@ -108,6 +109,9 @@ export class BrowserManager {
   // after that many ms with no `bumpIdleTimer()` call. Disabled by default.
   private _idleTimeoutMs: number | null = null;
   private _idleTimer: NodeJS.Timeout | null = null;
+  // Whether the current session launched headless. Read by scenario steps that
+  // behave differently with vs. without a human watching (e.g. pauseForManual).
+  private _headless = false;
   // CDP session held across throttle calls so emulation persists; detaching
   // voids the settings.
   private _throttleCdp: import("playwright").CDPSession | null = null;
@@ -137,6 +141,11 @@ export class BrowserManager {
 
   get isLaunched(): boolean {
     return this._page !== null && !this._page.isClosed();
+  }
+
+  /** Whether the current session was launched headless (no visible window). */
+  get isHeadless(): boolean {
+    return this._headless;
   }
 
   /**
@@ -193,6 +202,13 @@ export class BrowserManager {
      * every tool call. Default disabled; pass a positive ms to enable.
      */
     idleTimeoutMs?: number;
+    /**
+     * Sprint 18: path to a Playwright storageState JSON (cookies + localStorage)
+     * captured from a prior logged-in session. When set, the new context starts
+     * already authenticated, so every tool/scenario runs behind the login.
+     * The file holds session secrets — never log or echo its path or contents.
+     */
+    storageStatePath?: string;
   }): Promise<void> {
     const {
       headless = false,
@@ -201,6 +217,7 @@ export class BrowserManager {
       browser: browserName = "chromium",
       device,
       idleTimeoutMs,
+      storageStatePath,
     } = options ?? {};
 
     await mkdir(this.screenshotDir, { recursive: true });
@@ -212,6 +229,14 @@ export class BrowserManager {
         `Unknown browser "${browserName}". Use one of: chromium, firefox, webkit.`,
       );
     }
+
+    // Self-heal a clean install: download the engine on first use so every
+    // entrypoint (MCP server + all CLIs) works out of the box, not just
+    // webmobai-test. No-op once the browser is present.
+    const { ensureBrowserInstalled } = await import(
+      "../utils/ensure-browsers.js"
+    );
+    await ensureBrowserInstalled(browserName);
 
     logger.info(`Launching ${browserName} browser...`);
 
@@ -230,6 +255,7 @@ export class BrowserManager {
       headless,
       args: launchArgs,
     });
+    this._headless = headless;
 
     // Device preset (Pixel 5, iPhone 13, etc.) supplies viewport, UA,
     // devicePixelRatio, isMobile, hasTouch — the bits that make "mobile
@@ -271,6 +297,23 @@ export class BrowserManager {
       timezoneId: deviceContextOptions.timezoneId ?? "America/New_York",
       ignoreHTTPSErrors: true,
     };
+
+    // Sprint 18: start the context from a saved authenticated session so tools
+    // run behind a login. Playwright's newContext accepts a storageState file
+    // path directly. We validate existence up front for a clear error, and
+    // deliberately never log the path or contents — the file holds session
+    // tokens and this runs inside an LLM loop.
+    if (storageStatePath) {
+      if (!existsSync(storageStatePath)) {
+        throw new Error(
+          "storageState file not found. Create one by logging in once and " +
+            "saving the session (the webmobai_save_storage_state tool, " +
+            "saveStorageState(), or the --save-storage-state CLI flag).",
+        );
+      }
+      contextOptions.storageState = storageStatePath;
+      logger.info("Loading a saved authenticated session (storageState).");
+    }
 
     if (recordVideo) {
       contextOptions.recordVideo = {
@@ -664,6 +707,23 @@ export class BrowserManager {
 
   clearNetworkErrors(): void {
     this.networkErrors = [];
+  }
+
+  /**
+   * Sprint 18: persist the current context's authenticated session (cookies +
+   * localStorage) to a Playwright storageState JSON file, so a later run can
+   * launch already-logged-in via `storageStatePath`. The classic flow is:
+   * log in once (headed, solving any MFA), save, then replay headless in CI.
+   *
+   * The written file contains session secrets — callers must treat it like a
+   * credential (gitignore it) and this method never logs its path or contents.
+   */
+  async saveStorageState(path: string): Promise<void> {
+    if (!this.context) {
+      throw new Error("Browser not launched. Call launch() first.");
+    }
+    await this.context.storageState({ path });
+    logger.info("Saved the current session's storageState.");
   }
 
   async close(): Promise<void> {
