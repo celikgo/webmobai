@@ -44,7 +44,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/celikgo/webmobai.git",
+    "url": "git+https://github.com/celikgo/webmobai.git",
     "directory": "mcp-server"
   },
   "homepage": "https://github.com/celikgo/webmobai",
