@@ -197,7 +197,7 @@ export function createMcpServer(): { server: Server; browserManager: BrowserMana
   const server = new Server(
     {
       name: "webmobai",
-      version: "1.3.0",
+      version: "1.4.0",
     },
     {
       capabilities: {
