@@ -89,12 +89,23 @@ function sanitizeSuiteName(url: string): string {
 }
 
 function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  return (
+    s
+      // Strip characters that are illegal in XML 1.0 even when escaped (control
+      // chars other than tab/newline/carriage-return) plus ANSI colour escapes.
+      // A single one in a page <title> or console error otherwise makes the
+      // whole junit-*.xml malformed, and CI importers drop *every* result for
+      // the run rather than just the offending case.
+      // eslint-disable-next-line no-control-regex
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;")
+  );
 }
 
 function indent(s: string, n: number): string {

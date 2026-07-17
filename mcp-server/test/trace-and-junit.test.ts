@@ -172,6 +172,33 @@ describe("JUnit XML serializer", () => {
     }
   });
 
+  it("strips XML-illegal control chars from user-controlled text (B6)", () => {
+    const report: TestReportData = {
+      ...SAMPLE_REPORT,
+      results: [
+        {
+          url: "https://example.com",
+          // A form feed (\f) in a page title and an ANSI colour escape in the
+          // failure body — both XML-1.0-illegal even when escaped. One of these
+          // otherwise makes the whole file malformed and CI drops every result.
+          title: "Title with a \f form feed and a \x00 null",
+          status: "fail",
+          category: "Test",
+          description: "console error",
+          details: "\x1b[31mred error text\x1b[0m with an \x07 bell",
+        },
+      ],
+      summary: { totalTests: 1, passed: 0, failed: 1, warnings: 0 },
+    };
+    const xml = renderJunit(report);
+    // No XML-illegal control chars survive (tab/newline/CR are allowed).
+    // eslint-disable-next-line no-control-regex
+    expect(xml).not.toMatch(/[\x00-\x08\x0b\x0c\x0e-\x1f]/);
+    // The visible text survives; only the control bytes are removed.
+    expect(xml).toContain("red error text");
+    expect(xml).toContain("form feed");
+  });
+
   it("uses host+pathname as suite name for readability", () => {
     const xml = renderJunit(SAMPLE_REPORT);
     expect(xml).toMatch(/name="example\.com\/path"/);
