@@ -1,6 +1,6 @@
 # webmobai-mcp
 
-MCP server + CLI binaries for autonomous and AI-driven web QA. Drives a real Chromium / Firefox / WebKit browser through 43 tools that cover navigation, assertions, request mocking, accessibility (axe-core), Web Vitals (including INP), visual regression (pixelmatch), security / SEO / PWA audits, run history, regression detection, and self-healing selectors.
+MCP server + CLI binaries for autonomous and AI-driven web QA. Drives a real Chromium / Firefox / WebKit browser through 51 tools that cover navigation, assertions, request mocking, accessibility (axe-core), Web Vitals (including INP), visual regression (pixelmatch), security / SEO / PWA audits, run history, regression detection, and self-healing selectors.
 
 📘 Full user manual: [USER_MANUAL.md](https://github.com/celikgo/webmobai/blob/main/USER_MANUAL.md) &nbsp;·&nbsp; capabilities + roadmap: [FEATURES.md](https://github.com/celikgo/webmobai/blob/main/FEATURES.md)
 
@@ -12,15 +12,17 @@ npm install -g webmobai-mcp
 
 Chromium auto-downloads on first run (~170MB). Firefox + WebKit only when you launch them.
 
-## Five binaries
+## Seven binaries
 
 | Binary | What it does |
 |---|---|
-| `webmobai-mcp` | stdio MCP server — exposes all 43 tools to Claude Desktop / Claude Code |
+| `webmobai-mcp` | stdio MCP server — exposes all 51 tools to Claude Desktop / Claude Code |
 | `webmobai-test <url>` | One-shot full audit; emits HTML + JUnit + trace |
 | `webmobai-scenario <file>` | Run a single JSON scenario |
 | `webmobai-suite <file>` | Parallel suite runner with sharding + tag filters |
 | `webmobai-codegen <url>` | Interactive recording → scenario JSON |
+| `webmobai-monitor <url>` | Scheduled/interval monitoring with alert webhook + regression detection |
+| `webmobai-doctor` | Preflight environment check (Node, Playwright browsers, optional deps, auth file) |
 
 ## Connect to Claude
 
@@ -51,12 +53,12 @@ Restart Claude, then prompt:
 
 > *"Launch the browser, navigate to https://example.com/signup, fill the signup form with test@example.com and Password123!, submit, verify the welcome page, then check a11y and performance."*
 
-## Available tools (43)
+## Available tools (51)
 
-### Browser control (8)
+### Browser control (9)
 | Tool | Description |
 |------|-------------|
-| `webmobai_launch_browser` | Launch isolated Chromium / Firefox / WebKit (visible or headless). Accepts `device` for Playwright mobile presets. |
+| `webmobai_launch_browser` | Launch isolated Chromium / Firefox / WebKit (visible or headless). Accepts `device` for mobile presets and `storage_state_path` to start already authenticated. |
 | `webmobai_navigate` | Navigate to a URL |
 | `webmobai_click` | Click by selector (records snapshot for self-healing) |
 | `webmobai_type` | Fill an input (records snapshot for self-healing) |
@@ -64,6 +66,7 @@ Restart Claude, then prompt:
 | `webmobai_screenshot` | Viewport or full-page screenshot |
 | `webmobai_set_viewport` | Resize viewport |
 | `webmobai_close_browser` | Close browser; saves video + trace |
+| `webmobai_save_storage_state` | Save the logged-in session (cookies + localStorage) to a storageState JSON for authenticated replay |
 
 ### Page analysis (11)
 | Tool | Description |

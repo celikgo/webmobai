@@ -9,7 +9,7 @@ For an architectural map of what's shipped, see [FEATURES.md](./FEATURES.md). Fo
 ## Table of contents
 
 1. [Install](#1-install)
-2. [The five binaries](#2-the-five-binaries)
+2. [The seven binaries](#2-the-seven-binaries)
 3. [Five-minute quick start](#3-five-minute-quick-start)
 4. [Workflows by job](#4-workflows-by-job)
 5. [Scenario file format](#5-scenario-file-format)
@@ -34,7 +34,7 @@ For an architectural map of what's shipped, see [FEATURES.md](./FEATURES.md). Fo
 npm install -g webmobai-mcp
 ```
 
-This installs all five binaries: `webmobai-mcp`, `webmobai-test`, `webmobai-scenario`, `webmobai-suite`, `webmobai-codegen`.
+This installs all seven binaries: `webmobai-mcp`, `webmobai-test`, `webmobai-scenario`, `webmobai-suite`, `webmobai-codegen`, `webmobai-monitor`, `webmobai-doctor`.
 
 ### Option B — Desktop app (point-and-click)
 
@@ -76,11 +76,11 @@ npm run build
 }
 ```
 
-Restart Claude; the 43 `webmobai_*` tools will appear.
+Restart Claude; the 51 `webmobai_*` tools will appear.
 
 ---
 
-## 2. The five binaries
+## 2. The seven binaries
 
 | Binary | What it does | When to use |
 |---|---|---|
@@ -89,8 +89,10 @@ Restart Claude; the 43 `webmobai_*` tools will appear.
 | `webmobai-scenario <file>` | Run a single JSON scenario | Scripted E2E tests you check into the repo |
 | `webmobai-suite <file>` | Run a suite (many scenarios, parallel, sharded) | CI pipelines |
 | `webmobai-codegen <url>` | Interactive recording → scenario JSON | "I want to write a test by clicking around" |
+| `webmobai-monitor <url>` | Scheduled/interval runs with alert webhook + regression detection | "Watch this URL and alert me when it regresses" |
+| `webmobai-doctor` | Preflight check: Node, Playwright browsers, optional deps, auth file | "Is my environment set up correctly?" |
 
-All four CLI binaries emit HTML + JUnit reports plus a Playwright trace per run (where applicable). All temp artifacts go under `<os.tmpdir()>/webmobai-<id>/`.
+The five report-producing binaries (`-test`, `-scenario`, `-suite`, `-codegen`, `-monitor`) emit HTML + JUnit reports plus a Playwright trace per run (where applicable). All temp artifacts go under `<os.tmpdir()>/webmobai-<id>/`.
 
 ---
 
@@ -228,6 +230,40 @@ Via Claude:
 > "Generate a starter scenario for https://example.com/signup."
 
 Claude calls `webmobai_generate_scenario`, which inspects the page (H1, forms with sample-value typing, nav links, CTAs) and emits a Scenario JSON. Refine and save.
+
+### Test behind a login (authenticated sessions)
+
+By default every session starts with a clean, cookie-less profile, so tools can only reach public pages. To test anything behind a login, capture the session **once** and replay it:
+
+**1. Log in once and save the session.** Interactively via Claude:
+> "Launch a headed browser, go to https://app.example.com/login, log in with these credentials, then save the session to `auth.json`."
+
+Claude drives the login and calls `webmobai_save_storage_state({ path: "auth.json" })`. For a login that needs a human step (MFA code, CAPTCHA, SSO consent), a hand-authored scenario can use a `pauseForManual` step to wait for you in headed mode, then a `saveStorageState` step:
+
+```json
+{
+  "name": "Capture auth",
+  "url": "https://app.example.com/login",
+  "steps": [
+    { "type": "type", "selector": "#email", "text": "me@example.com" },
+    { "type": "type", "selector": "#password", "text": "…" },
+    { "type": "click", "selector": "[data-testid=submit]" },
+    { "type": "pauseForManual", "prompt": "Enter the MFA code in the browser", "timeoutMs": 60000 },
+    { "type": "saveStorageState", "path": "auth.json" }
+  ]
+}
+```
+
+**2. Replay authenticated** — point any surface at the saved file:
+
+```bash
+webmobai-scenario checkout.json --storage-state auth.json      # one scenario
+webmobai-suite pre-deploy.json --storage-state auth.json       # whole suite, one session
+```
+
+A scenario can also carry `"storageState": "auth.json"`, and a suite can set it once under `defaults`. Over MCP, pass `storage_state_path` to `webmobai_launch_browser`. The classic CI flow is **log in once headed → save `auth.json` → replay headless in CI**.
+
+> ⚠️ **`auth.json` contains live session tokens.** Treat it as a credential: it's added to `.gitignore` by default — never commit or share it. WebMobAI never prints the file's path contents into a tool response, log, or report. In CI, regenerate it from a secret rather than checking it in.
 
 ---
 
@@ -409,7 +445,7 @@ webmobai-suite pre-deploy.json --shard ${SHARD}/4 --workers 2 --exclude-tag slow
 
 ## 7. MCP tool reference
 
-43 tools across 12 categories. Each is callable from Claude or any MCP-compatible client. Full schemas are exposed via `tools/list` on the MCP server.
+51 tools across 12 categories. Each is callable from Claude or any MCP-compatible client. Full schemas are exposed via `tools/list` on the MCP server.
 
 ### Browser control (8)
 `webmobai_launch_browser`, `webmobai_navigate`, `webmobai_click`, `webmobai_type`, `webmobai_scroll`, `webmobai_screenshot`, `webmobai_set_viewport`, `webmobai_close_browser`

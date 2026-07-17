@@ -7,7 +7,7 @@ WebMobAI gives you four ways to test the same browser engine:
 1. **Desktop app** — enter a URL, click Test, get a report
 2. **Standalone CLI** — `webmobai-test`, `webmobai-scenario`, `webmobai-suite`, `webmobai-codegen`, `webmobai-monitor`
 3. **Scripted scenarios** — JSON files with assertions, network mocking, visual snapshots
-4. **AI-driven via MCP** — Claude calls 49 tools to compose tests in natural language
+4. **AI-driven via MCP** — Claude calls 51 tools to compose tests in natural language
 
 The distinctive feature is **self-healing selectors**: when a `[data-testid=submit]` stops matching (because someone renamed the testid), the tool response includes the prior element fingerprint, ranked candidate replacements, and the page-state triage — so an AI client retries with a smarter selector instead of failing the test.
 
@@ -45,8 +45,11 @@ The distinctive feature is **self-healing selectors**: when a `[data-testid=subm
 | **PDF report** (auto-emitted alongside HTML) | Auto in `webmobai-test`; `Open PDF` button in the desktop app |
 | **Scheduled / monitor mode** (Sprint 17) | `webmobai-monitor <url> --interval=5m --alert-webhook=<url>` |
 | **Trend dashboard** + this-run-vs-historical-median comparison | Desktop **Monitors** tab; auto-embedded in every report |
+| **Authenticated sessions** (Sprint 18) — test behind a login by replaying a saved session | `webmobai_save_storage_state`; `--storage-state auth.json` on `webmobai-scenario`/`-suite`; `storage_state_path` on launch |
+| **Manual-step pause** for MFA/CAPTCHA during a headed login capture | `pauseForManual` scenario step |
+| **Preflight environment check** (Sprint 18) | `webmobai-doctor` |
 
-**49 MCP tools**, **6 binaries**, **200 tests**, and the test surface stays green on Chromium + Firefox + WebKit via CI.
+**51 MCP tools**, **7 binaries**, **214 tests**, and the test surface stays green on Chromium + Firefox + WebKit via CI.
 
 ---
 
@@ -201,7 +204,7 @@ webmobai/
 │   │   ├── codegen-cli.ts          webmobai-codegen CLI
 │   │   ├── monitor-cli.ts          webmobai-monitor CLI (Sprint 17)
 │   │   ├── playwright/             BrowserManager, PageAnalyzer, element snapshots
-│   │   ├── tools/                  16 MCP tool files (49 tools, incl. ai-tools, lighthouse-tools)
+│   │   ├── tools/                  16 MCP tool files (51 tools, incl. ai-tools, lighthouse-tools)
 │   │   ├── scenario/               types, runner, scaffolder
 │   │   ├── suite/                  types, loader, filter, runner
 │   │   ├── visual/                 comparator, baseline-store

@@ -11,7 +11,7 @@ This file is the contract: **what's shipped today**, **what's intentionally out 
 Three consumer paths share one engine:
 
 1. **Standalone desktop app** — user enters a URL, clicks Test, watches results stream in. Powered by the `webmobai-test` CLI.
-2. **AI-driven via MCP** — Claude (or any MCP-compatible agent) calls **49 MCP tools** to explore, interact, audit, assert, mock, and report.
+2. **AI-driven via MCP** — Claude (or any MCP-compatible agent) calls **51 MCP tools** to explore, interact, audit, assert, mock, and report.
 3. **Script-driven** — Author JSON scenarios and suites; run them with `webmobai-scenario`, `webmobai-suite`, or record them interactively with `webmobai-codegen`.
 
 The shared engine is built on **Playwright** (Chromium / Firefox / WebKit) wrapped by a thin TypeScript server (`mcp-server/`).
@@ -22,7 +22,7 @@ The project's distinctive feature is **AI-leveraged self-healing**: every select
 
 | Binary | What it does |
 |---|---|
-| `webmobai-mcp` | MCP server (stdio) — exposes all 49 tools to Claude Desktop, Claude Code, etc. |
+| `webmobai-mcp` | MCP server (stdio) — exposes all 51 tools to Claude Desktop, Claude Code, etc. |
 | `webmobai-test <url>` | Standalone auto-test — explores a URL and produces a full audit report |
 | `webmobai-scenario <file>` | Run a single JSON scenario, emit HTML + JUnit + trace.zip |
 | `webmobai-suite <file>` | Run a collection of scenarios with parallelism, sharding, tag filters |
