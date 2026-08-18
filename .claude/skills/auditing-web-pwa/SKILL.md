@@ -26,7 +26,7 @@ Use when the user cares specifically about install/offline capability. If they s
 
 1. **URL** (required). The exact page to audit — usually the app's entry route (`start_url`), since that's where the manifest and SW are wired up.
 2. **Test offline?** (optional, default no). Offline testing *mutates page state* (it reloads under a forced-offline context). Only enable it when the user asks about offline behavior, and never mid-flow on a page you still need in its loaded state.
-3. **Login required?** If the entry page is auth-gated, ask for credentials — manifest/SW often only load post-auth.
+3. **Login required?** If the entry page is auth-gated, don't re-drive the login form on every audit — capture a session once and launch from it. See `testing-web-authenticated-sessions` (`webmobai_save_storage_state`, then `storage_state_path` on `webmobai_launch_browser`). Never invent credentials. Note that a replayed `storageState` carries cookies and localStorage but **not** service-worker registrations or the Cache Storage they populate, so the SW must re-register on the replayed load — give it a beat (step 2) before auditing.
 
 ## Workflow
 
@@ -40,21 +40,25 @@ Use when the user cares specifically about install/offline capability. If they s
 `webmobai_pwa_audit`. Pass `test_offline: true` **only** if the user asked about offline support; otherwise omit it (defaults to `false`). The tool checks manifest → service worker → HTTPS → (optional) offline, and returns a markdown findings list grouped by severity (`high`, `medium`, `low`, `info`) with a per-rule breakdown.
 
 ### 4. Interpret the findings
-Map the returned rules into the four groups for the user. Key rules to translate:
-- `manifest-link-missing` / `manifest-fetch-failed` / `manifest-invalid-json` (high) → no usable manifest; not installable.
-- `manifest-missing-<field>` (medium) → manifest present but incomplete.
-- `manifest-icon-too-small` (medium) → no ≥192×192 icon; Chrome won't offer install.
-- `manifest-invalid-display` (low) → `display` not one of fullscreen/standalone/minimal-ui/browser.
-- `sw-not-registered` (medium) → no service worker; no offline, no install prompt.
-- `sw-registration-inactive` (low) → SW registered but not yet active.
-- `pwa-not-https` (medium) → not HTTPS/localhost; SW can't register at all.
-- `offline-no-fallback` (medium) → offline reload rendered nothing.
+Map the returned rules into the four groups for the user. This is the complete rule set — don't re-grade the severities:
+- `manifest-link-missing` (high) → no `<link rel=manifest>` in the head; nothing else about the manifest is checked.
+- `manifest-fetch-failed` (high) → the manifest URL returned a non-2xx. The audit stops there; no field checks run.
+- `manifest-invalid-json` (high) → the body didn't `JSON.parse`. Again, field checks are skipped.
+- `manifest-fetch-error` (high) → the in-page `fetch()` threw (CORS, CSP, network). Distinct from `manifest-fetch-failed`, and easy to miss.
+- `manifest-missing-<field>` (medium) → one per absent/empty required field: `name`, `short_name`, `start_url`, `display`, `icons`.
+- `manifest-icon-too-small` (medium) → largest parsed icon side is < 192; Chrome won't offer install.
+- `manifest-invalid-display` (low) → `display` not one of `fullscreen`, `standalone`, `minimal-ui`, `browser`.
+- `sw-not-supported` (info) → the browser doesn't expose `navigator.serviceWorker` at all.
+- `sw-not-registered` (medium) → no service worker registered for this origin; no offline, no install prompt.
+- `sw-registration-inactive` (low) → registration(s) exist but none are `active` yet.
+- `pwa-not-https` (medium) → not HTTPS and not `http://localhost`; SW can't register at all.
+- `offline-no-fallback` (medium) → offline reload rendered nothing (or the reload threw).
 - `offline-renders` (info) → good PWA behavior.
 
-An empty findings list means "All PWA heuristics pass."
+Output is headed `# PWA audit — <url>` with `Found N findings: N high, N medium, N low, N info.` An empty findings list returns exactly `All PWA heuristics pass.`
 
 ### 5. Record results (optional)
-If this is part of a larger reported session, log grouped entries via `webmobai_add_test_result` under the `Content` category — one entry per group (Manifest, Service Worker, HTTPS, Offline). Map high → `fail`, medium → `warning` or `fail` by user impact, low/info → `pass`/`warning`.
+If this is part of a larger reported session, log grouped entries via `webmobai_add_test_result` under the `Content` category — one entry per group (Manifest, Service Worker, HTTPS, Offline). `category` is a free string, so `Content` is a convention that keeps report grouping consistent; `title`, `status`, `category`, and `description` are all required. Map high → `fail`, medium → `warning` or `fail` by user impact, low/info → `pass`/`warning`.
 
 ### 6. Report & close
 If the user wants a deliverable, `webmobai_generate_report` with the audited URL. Always `webmobai_close_browser` last.
@@ -99,11 +103,15 @@ PWA READINESS: NOT INSTALLABLE — https://app.example.com
 
 ## Tips & Gotchas
 
-- **This is heuristics, not a full Lighthouse PWA audit.** It checks presence/validity, not caching strategy quality, push, or background sync. Say so if the user expects a Lighthouse score.
+- **This is heuristics, not a full Lighthouse PWA audit.** It checks presence/validity, not caching strategy quality, push, or background sync. Say so if the user expects a Lighthouse score. For official 0-100 category scores, hand off to `auditing-web-lighthouse`.
 - **Audit the right page.** The manifest and SW usually live on the app entry route, not a marketing subpage. If nothing is found, confirm the URL.
-- **HTTPS is the gate.** On plain HTTP (non-localhost), the SW literally cannot register — expect `sw-not-registered` alongside `pwa-not-https`. Fix HTTPS first; other findings may be downstream of it.
-- **Offline mutates state.** `test_offline: true` reloads under a forced-offline context. Run it last, or on a throwaway navigation — don't run it on a page you still need in its current state. The tool restores online mode afterward.
-- **SW registration is async.** Auditing immediately after navigate can miss a SW that registers a beat later. Give the page a moment (step 2) on SPA-heavy sites.
+- **HTTPS is the gate, and only `localhost` is exempt.** The check is literally "URL starts with `https://` or `http://localhost`". A dev server on `http://127.0.0.1:3000` or `http://dev.local` is therefore flagged `pwa-not-https` even though the browser itself treats `127.0.0.1` as a secure context. Read that finding as a false positive on a loopback IP, not as a real defect. On genuine plain HTTP the SW cannot register at all — expect `sw-not-registered` alongside it; fix HTTPS first, since the other findings are downstream.
+- **The manifest is fetched by the page, not by Playwright.** The audit runs `fetch(manifestUrl)` inside the page, so it inherits the page's cookies, CSP, and — importantly — **any active `webmobai_route` interception**. If you armed a route in the same session (see `testing-web-error-states`), unroute before auditing or you may be validating a mock. A CSP `connect-src` that blocks the manifest origin surfaces as `manifest-fetch-error`, not as a manifest problem.
+- **The icon-size check only understands `WxH`.** Sizes are parsed with `/^(\d+)x(\d+)$/` and compared on the **width**. A single scalable icon declared `sizes="any"` (the normal way to ship an SVG) parses to 0 and trips `manifest-icon-too-small` even though Chrome accepts it. Also, the check runs only when `icons` is a non-empty array — an absent `icons` field reports as `manifest-missing-icons` instead.
+- **Manifest failures short-circuit.** `manifest-fetch-failed`, `manifest-invalid-json`, and `manifest-fetch-error` return immediately, so you get **no** field, display, or icon findings on the same run. Fix the fetch/parse first, then re-audit for the rest — don't report "only one manifest problem."
+- **Offline mutates state.** `test_offline: true` reloads under a forced-offline context. Run it last, or on a throwaway navigation — don't run it on a page you still need in its current state. The tool restores online mode in a `finally`, so a thrown reload still leaves the context online.
+- **The offline verdict is crude.** "Rendered usefully" means `document.body.innerText.trim().length > 0` after a reload with a 5 s timeout. A branded offline page passes; so does a page showing a single error string. It does not verify the *content* is the cached app shell.
+- **SW registration is async.** Auditing immediately after navigate can miss a SW that registers a beat later. Give the page a moment (step 2) on SPA-heavy sites. `sw-registration-inactive` frequently means exactly this — you looked too early — so re-run before reporting it as a defect.
 - **Don't confuse this with performance.** "Is my PWA fast?" is `auditing-web-performance`. This skill only speaks to installability and offline.
 
 ## Example Invocations

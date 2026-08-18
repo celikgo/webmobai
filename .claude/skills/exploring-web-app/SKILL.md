@@ -28,8 +28,14 @@ For specific testing of known pages, use `testing-web-app` (full audit), `runnin
 2. **Crawl depth** — default 2 (homepage + pages linked from homepage). Higher depths grow fast; ask before going beyond 3.
 3. **Page cap** — default 15. Hard stop, ask before raising.
 4. **Origin policy** — stay on the same origin (default) or follow specific subdomains. Never crawl external links.
-5. **Auth** — if any portion of the site is gated, ask whether to log in and where to stop (e.g., explore public pages only, or log in and explore the dashboard).
+5. **Auth** — if any portion of the site is gated, ask whether to log in and where to stop (e.g., explore public pages only, or crawl the dashboard authenticated). See "Behind a login?" below.
 6. **Goal** — what should the map highlight? Common goals: "find pages with forms", "list pages with console errors", "rank pages by perf concern", "discover all admin pages". This shapes what you record per page.
+
+### Behind a login?
+
+Crawls hit auth walls harder than any other skill: a single 302 to `/login` turns dozens of distinct URLs into the same login page, and the map silently fills with duplicates. Detect it early — the post-redirect final URL is `/login` / `/signin` / carries `?next=`, or a password input shows up on pages that shouldn't have one.
+
+Don't hand-drive a login mid-crawl. Launch with `storage_state_path: "auth.json"` so every page in the crawl is already authenticated (CLI: `--storage-state`), and capture that file once via `testing-web-authenticated-sessions`. Two crawl-specific consequences: dedupe on the **post-redirect** URL so a session expiring mid-crawl shows up as a run of identical `/login` records rather than real pages, and treat an authenticated crawl as *inside* the blast radius — see the destructive-URL rules below, which matter far more once you are logged in.
 
 ## Workflow
 
@@ -79,9 +85,11 @@ Based on what you found, suggest next steps:
 - Pages with errors → "Investigate /pricing — console error on load"
 - Heavy pages → "Run `auditing-web-performance` on /product/* (LCP looks high)"
 - Pages with complex interactive surfaces → "Run `auditing-web-accessibility` on /dashboard"
+- Pages that turned out to be `auth-required` → "Capture a session once via `testing-web-authenticated-sessions`, then re-crawl with `storage_state_path`"
+- A crawl worth repeating → "Turn the healthy paths into scenario JSON with `authoring-web-scenarios`, then wire them into a suite as a CI gate with `running-web-ci-suites`". A crawl is a one-off; a suite is what catches the regression next week.
 
 ### 6. Report
-`webmobai_generate_report`. Each crawled page is automatically tracked in `pagesExplored`. You can `webmobai_add_test_result` for each page to give the report more structure (`category: "Navigation"`, `title: "Crawled /pricing"`, `status: "pass"` or `"fail"` based on errors).
+`webmobai_generate_report`. The report's `pagesExplored` list is built **only** from URLs recorded by `webmobai_add_test_result` — navigating to a page does not register it. So call `webmobai_add_test_result` once per crawled page (`category: "Navigation"`, `title: "Crawled /pricing"`, `status: "pass"` or `"fail"` based on errors), or the report will say zero pages were explored.
 
 ### 7. Close
 `webmobai_close_browser`.
@@ -93,8 +101,14 @@ Based on what you found, suggest next steps:
 - **Skip patterns**:
   - File downloads (`.pdf`, `.zip`, `.csv`, etc.) — the browser will trigger a download, not a navigation
   - `mailto:`, `tel:`, `javascript:` URLs
-  - URLs that match known logout/destructive paths (`/logout`, `/delete-account`) unless the user explicitly opted in
   - URLs containing `:id` placeholder values or test fixtures
+- **Destructive URLs — hard skip list.** A crawler follows links; a link is all it takes to fire a side effect. Never navigate to these unless the user explicitly named them:
+  - **Session-destroying**: `/logout`, `/sign-out`, `/signout`, `/session/destroy`, `/signin/destroy`. Following one ends the authenticated crawl and every subsequent page records as `/login`.
+  - **State-destroying**: anything matching `delete`, `remove`, `destroy`, `revoke`, `cancel`, `deactivate`, `reset`, `purge`, `archive`, `unsubscribe`, `close-account`.
+  - **Transactional**: `/checkout`, `/pay`, `/subscribe`, `/upgrade`, `/invite`, `/send`. GET on these is usually a form page, but not always.
+  - **Admin one-click actions**: `?action=`, `?confirm=`, `?token=` query params on an otherwise ordinary path.
+
+  This list is *load-bearing when authenticated* — logged out, `/delete-account` is a redirect to the login page; logged in, it can be a real deletion. When in doubt, record the URL in the map as `skipped (destructive)` and let the user decide. Never "test" a destructive path to see what it does.
 - **Pagination**: if the site has `/blog/page/2`, `/page/3`, etc., crawl the first 2 paginated pages then stop — pagination usually reveals duplicate page types.
 - **Infinite scroll**: don't try to exhaust infinite-scroll feeds. Crawl the initial state.
 - **Same-page anchors**: links to `#foo` on the current URL are not new pages — skip.
@@ -114,8 +128,10 @@ headings:      ["Pricing", "Plans", "FAQ"]
 links_out:     12 internal, 4 external
 forms:         1 (contact form at bottom)
 features:      [has_form, has_video]
-screenshot:    /tmp/webmobai-screenshots/crawl-pricing.png
+screenshot:    /var/folders/…/webmobai-1747050000000-a1b2c3/screenshots/screenshot-3-1747050012345.png
 ```
+
+Record whatever path `webmobai_screenshot` returned. Every artifact for a session lands under one `<os.tmpdir()>/webmobai-<ts>-<rand>/` directory — `screenshots/screenshot-<n>-<ts>.png` for viewport shots, `full-<n>-<ts>.png` for full-page.
 
 Extended record (when the user's goal warrants):
 - Performance metrics (LCP, FCP, CLS) — adds ~1-2s per page
@@ -162,18 +178,20 @@ Crawl complete — https://example.com (12 pages, depth 2)
     1. `testing-web-forms` on /signup and /contact
     2. Investigate /pricing console error (likely the widget)
     3. `auditing-web-performance` on /docs/* — they look JS-heavy
-  Report: /tmp/webmobai-report-1715534000.html
+    4. `authoring-web-scenarios` → `running-web-ci-suites` to lock the healthy paths into a CI gate
+  Report: /var/folders/…/webmobai-1747050000000-a1b2c3/report-1747050099000.html
 ```
 
 ## Tips & Gotchas
 
 - **Crawls scale badly**. 15 pages at 5s each is ~80s. Adding a11y + perf per page bumps that to ~2-3min. Tell the user the time estimate before starting larger crawls.
 - **Same-page SPA routes**: many SPAs change the URL via History API without a full navigation. `webmobai_navigate` handles these correctly, but `webmobai_get_links` may return only the currently-rendered links. For very dynamic sites, you may miss routes that only appear after interaction.
-- **Login walls**: if you hit a 401/302 to login, mark the page as `auth-required` and skip — don't try to log in mid-crawl unless the user authorized it.
+- **Login walls**: if you hit a 401/302 to login, mark the page as `auth-required` and skip — don't try to log in mid-crawl unless the user authorized it. The durable fix is to relaunch the whole crawl with `storage_state_path` (`testing-web-authenticated-sessions`), not to log in halfway through: a crawl that changes auth state partway produces a map where half the records are unreachable to the other half.
+- **A session expiring mid-crawl looks like a broken site.** Every remaining page starts recording as the same `/login` title with zero errors. If the health view suddenly goes uniform, check the final URLs before writing up "the app is fine".
 - **Rate limiting / WAFs**: if the site rate-limits or you start getting 429s, slow down (don't add explicit sleeps; the network-idle wait usually paces you, but consider lowering the page cap).
 - **Robots.txt etc.**: the tool does not respect `robots.txt`. The user is responsible for ensuring they have authorization to crawl. Surface this if crawling a non-owned site.
 - **Visited set**: deduplicate on the *post-redirect* final URL, not the requested URL. Otherwise `/a → /b` and `/b` get treated as two pages.
-- **Don't follow logout links**. Add `/logout`, `/sign-out`, `/signin/destroy`, `/account/delete` to the skip set. Logging yourself out mid-crawl is destructive to the session.
+- **Don't follow logout or destructive links**. See the hard skip list under Crawl Heuristics. Logging yourself out mid-crawl silently invalidates every page after it; a `?action=delete` link does something you can't undo. This is the single highest-consequence rule in this skill once the crawl is authenticated.
 - **Trailing slashes & case**: `/about` and `/about/` and `/About` are often the same page. Normalize when deduplicating.
 
 ## Example Invocations
@@ -188,4 +206,4 @@ User: *"Crawl my staging site and tell me which pages are broken."*
 → Standard crawl, but emphasize the "health" view: red pages get the headline.
 
 User: *"Find all the pages with forms behind the login."*
-→ Confirm credentials. Log in. Crawl from the post-login landing page. Tag pages with `has_form`. Report the tagged list.
+→ Ask whether a saved session already exists. If not, capture one via `testing-web-authenticated-sessions`, then launch with `storage_state_path` and crawl from the post-login landing page with the destructive skip list armed. Tag pages with `has_form`. Report the tagged list.

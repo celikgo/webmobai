@@ -38,7 +38,16 @@
     "ai-testing",
     "visual-regression",
     "performance",
-    "web-vitals"
+    "web-vitals",
+    "e2e-testing",
+    "test-automation",
+    "self-healing-selectors",
+    "lighthouse",
+    "seo",
+    "pwa",
+    "security-audit",
+    "authenticated-testing",
+    "cli"
   ],
   "author": "celikgo",
   "license": "MIT",
