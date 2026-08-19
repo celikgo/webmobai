@@ -57,6 +57,7 @@ jobs:
             --retry-wait-time 5
             --timeout 30
             --accept 200,206,301,302,308
+            --remap 'https://github.com/celikgo/webmobai/blob/main/(.*) file://${{ github.workspace }}/$1'
             --exclude '^https?://([a-z0-9-]+\.)*example\.(com|org|net)([/:?#]|$)'
             --exclude '^https?://([a-z0-9-]+\.)*[a-z0-9-]+\.(test|invalid|localhost)([/:?#]|$)'
             --exclude '^https?://(localhost|127\.0\.0\.1|\[::1\])([/:?#]|$)'
@@ -108,6 +109,30 @@ jobs:
 #    about the link. The package's existence is verified directly against
 #    `registry.npmjs.org` by the `readme-claims` job in ci.yml, which is a real
 #    check rather than a scrape of the marketing site.
+#
+# ---------------------------------------------------------------------------
+# The one remap, and why
+# ---------------------------------------------------------------------------
+#
+# `--remap 'https://github.com/celikgo/webmobai/blob/main/(.*) file://.../$1'`
+#
+# mcp-server/README.md is the npm package page. Relative links do not work
+# there — npm renders it on npmjs.com, where `../docs/CI.md` resolves to
+# nothing — so its links into this repository have to be absolute
+# `blob/main` URLs. That is correct for the reader and awkward for this job:
+# a documentation file added on a branch does not exist at `blob/main` until
+# the branch merges, so the link 404s on exactly the pull request that adds
+# it, and the check blocks the merge that would make it pass.
+#
+# Rewriting those URLs to the checked-out working copy tests the invariant we
+# actually care about: **the file this link points at exists in this
+# repository**. That is true before the merge and after it, and it still
+# fails loudly for a link that names a file which genuinely is not there —
+# which is the bug this job is for. What it no longer does is re-test
+# github.com's ability to serve a file we can see on disk.
+#
+# The pattern is anchored to this repository's own blob URLs. A link to any
+# other repository is fetched over the network as normal.
 #
 # Note on the regex-shaped strings under example.com: SCENARIO_FORMAT.md
 # documents `assert_url` patterns such as `https://app\.example\.com/u/\d+$`.
