@@ -9,13 +9,11 @@ description: Use when the user wants to verify a site renders correctly at multi
 
 This skill exercises a web page across multiple viewport sizes and reports per-breakpoint findings: screenshots, horizontal overflow flags, and a final report. It uses `webmobai_test_responsive` for the canonical sweep and adds focused interaction checks per breakpoint when the user cares about specific elements (nav, modals, forms) that often break at small widths.
 
-**Scope**: this is a *layout* test, not a *performance* test or a *device emulation* test. It changes the viewport size but does **not**:
-- Emulate touch input (taps register as mouse clicks)
-- Throttle CPU or network
-- Spoof the User-Agent string to mobile
-- Test on real devices
+**Scope**: this is a *layout* test, not a *performance* test or a *real-device* test. `webmobai_test_responsive` and `webmobai_set_viewport` resize the viewport and nothing else — no touch events (taps register as mouse clicks), no CPU or network throttling, no User-Agent change, no `devicePixelRatio` change.
 
-For real mobile testing, route the user to BrowserStack, Sauce, or a physical device.
+If the user actually needs mobile *emulation* rather than a resize, that is a launch-time option, not part of the sweep: relaunch with `webmobai_launch_browser` and a Playwright `device` preset (`"iPhone 13"`, `"Pixel 5"`, `"iPad Pro 11"`), which applies the device's viewport, User-Agent, `isMobile`, and touch support together. The preset's viewport wins over `viewport_width`/`viewport_height`, so one device per launch — you cannot sweep breakpoints inside a device-emulated context. Throttling is separate again: `webmobai_set_network_throttle` / `webmobai_set_cpu_throttle` (Chromium-only for the bandwidth presets and CPU).
+
+For real hardware, route the user to BrowserStack, Sauce, or a physical device.
 
 ## When to Use
 
@@ -35,8 +33,14 @@ Use `testing-web-app` if the user wants responsive *plus* other audits in one re
    - **Tablet**: 768×1024 (iPad portrait)
    - **Desktop**: 1280×720
 3. **Custom breakpoints** — if the user has a design system with specific breakpoints (e.g., Tailwind's `sm:640`, `md:768`, `lg:1024`, `xl:1280`), use those instead.
-4. **Auth** — same caveat as other skills.
+4. **Auth** — see "Behind a login?" below.
 5. **Interaction depth** — just screenshot each breakpoint, or also exercise nav/modals at each breakpoint? Default: screenshot only; ask if the user wants deeper interaction tests.
+
+### Behind a login?
+
+The pages most likely to break at 375px — dashboards, data tables, settings panels, wizards — are usually the ones behind auth. Detect it the same way as everywhere else: the final URL after `webmobai_navigate` is `/login`, or the page state is a bare login form.
+
+Launch with `storage_state_path: "auth.json"` and run the sweep against the real page. Capture that file once via `testing-web-authenticated-sessions`. Watch for the specific failure mode here: a sweep run against a login screen produces three clean, overflow-free screenshots and a green result — the login page is trivially responsive. Confirm the final URL before reporting PASS.
 
 ## Workflow
 
@@ -50,11 +54,12 @@ Use `testing-web-app` if the user wants responsive *plus* other audits in one re
 `webmobai_test_responsive` with the breakpoint list. The tool:
 - Sets each viewport
 - Waits 500ms for reflow
-- Screenshots
-- Checks `documentElement.scrollWidth > clientWidth` for horizontal overflow
-- Records a `pass`/`warning` per breakpoint
+- Screenshots into the session dir (`screenshots/screenshot-<n>-<ts>.png`), captioned `"<Name> (<W>x<H>)"`
+- Checks `document.documentElement.scrollWidth > clientWidth` for horizontal overflow
+- Records one session result per breakpoint — `warning` when overflow was found, `pass` otherwise, under category `Responsive`
+- Restores the viewport it started with when the sweep finishes
 
-This is the lowest-effort, highest-coverage call. Always run it first.
+This is the lowest-effort, highest-coverage call. Always run it first. Note it records those results itself — don't duplicate them with your own `webmobai_add_test_result` for the same breakpoints.
 
 ### 4. (Optional) Deeper per-breakpoint interaction checks
 If the user asked for interaction tests, do this per breakpoint. For each breakpoint:
@@ -130,9 +135,11 @@ Responsive test — https://example.com (3 breakpoints)
   Layout issues found:
    - Mobile: horizontal scroll — hero image fixed at 412px (no max-width: 100%)
    - Mobile: nav links wrap and overlap the logo
-  Screenshots: /tmp/webmobai-screenshots/responsive-{mobile,tablet,desktop}.png
-  Report: /tmp/webmobai-report-1715534000.html
+  Screenshots: /var/folders/…/webmobai-1747050000000-a1b2c3/screenshots/screenshot-{1,2,3}-<ts>.png
+  Report:      /var/folders/…/webmobai-1747050000000-a1b2c3/report-1747050099000.html
 ```
+
+Use the paths the tools actually returned — `webmobai_test_responsive` prints one screenshot path per breakpoint, and `webmobai_generate_report` prints `report-<ts>.html`. Both live in that run's `<os.tmpdir()>/webmobai-<ts>-<rand>/` session directory. Don't rewrite them into tidier-looking names.
 
 ## Common Findings
 
@@ -149,8 +156,9 @@ Don't pretend to know the cause when you don't. Show the symptom and let the dev
 
 ## Tips & Gotchas
 
-- **Hardware vs CSS pixels**: WebMobAI uses CSS pixels. A "375px wide" viewport corresponds to an iPhone in portrait at devicePixelRatio 3 — physically 1125 device pixels wide, but CSS-side 375. Screenshots are at CSS resolution, not device resolution.
-- **Touch vs click**: the tool dispatches mouse events. Touch-only interactions (long-press, swipe) cannot be tested. Surface this if the user is testing a touch-heavy interface.
+- **Hardware vs CSS pixels**: a viewport resize uses CSS pixels at `devicePixelRatio` 1. A "375px wide" viewport matches an iPhone's CSS width but not its 3× pixel density — screenshots come out at CSS resolution. A `device` preset launch does set the device's real DPR.
+- **Touch vs click**: after a plain resize the page still gets mouse events, so touch-only interactions (long-press, swipe) can't be tested and `@media (hover: hover)` still matches. A `device`-preset launch enables touch, but `webmobai_click` / `webmobai_hover` still drive Playwright's normal input — gestures remain out of reach either way.
+- **Behind a login**: a responsive sweep of a login page is a green result about the wrong page. Launch with `storage_state_path` (see "Behind a login?") before sweeping anything gated.
 - **`hover` doesn't work on mobile in real life**. If the desktop layout depends on `:hover` to reveal content, that content is unreachable on touch devices. Flag this even though the test browser will happily respect `:hover` at any viewport.
 - **CSS animations & transitions**: the 500ms post-resize wait inside `webmobai_test_responsive` is enough for most transitions, but long ones (CSS keyframe animations >500ms) may screenshot mid-animation. Add an extra `webmobai_wait_for` with a timeout if needed.
 - **Viewport != screen**: changing viewport doesn't change `window.screen`. Code that reads `screen.width` (rare but exists in old responsive libraries) sees the host machine's screen.
@@ -169,3 +177,6 @@ User: *"Check the navigation works on mobile — open the hamburger menu, then c
 
 User: *"My designer says the modal is broken on tablet."*
 → Set viewport to 768×1024, open the modal, screenshot, run `webmobai_evaluate` to check for inner overflow, report findings. No need for the full sweep.
+
+User: *"Check the account dashboard on mobile — you'll need to be logged in."*
+→ Launch with `storage_state_path: "auth.json"` (capture it first via `testing-web-authenticated-sessions` if it doesn't exist), navigate to the dashboard, verify the final URL isn't `/login`, then run the standard sweep. Data tables are the usual overflow culprit here.

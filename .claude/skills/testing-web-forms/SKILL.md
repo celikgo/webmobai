@@ -27,10 +27,17 @@ Use `testing-web-app` for broad audits that include forms as one piece. Use `reg
 
 1. **Starting URL** — the page hosting the form (e.g., `/signup`).
 2. **Form purpose** — login, signup, contact, checkout, search, etc. This affects what data to fill and what success/failure looks like.
-3. **Test credentials** — for login/signup, ask explicitly. **Never invent emails or passwords against production systems** — they'll create real accounts or fail auth in surprising ways.
+3. **Test credentials** — for login/signup, ask explicitly. **Never invent emails or passwords against production systems** — they'll create real accounts or fail auth in surprising ways. If the form merely lives behind a login rather than being the login, ask for a saved session file instead of a password (see "Behind a login?" below).
 4. **Happy path expectation** — what should happen on successful submit? (Redirect to `/welcome`, show a success toast, etc.)
 5. **Validation cases** — what invalid inputs should the user test? Defaults below.
 6. **Test mode** — is there a sandbox/staging endpoint? If hitting production, confirm explicitly before submitting.
+
+### Behind a login?
+
+Two different situations, don't conflate them:
+
+- **The login form *is* the thing under test.** Stay here — drive it with `webmobai_type` / `webmobai_click` as normal. One addition: once the happy path succeeds, offer `webmobai_save_storage_state` with a `path` so the session is reusable by every other skill instead of being thrown away at `close_browser`.
+- **The form sits behind a login** (checkout, account settings, an admin wizard). Detect it: `webmobai_navigate` to the form URL lands on `/login` or `?next=`, or `get_page_state` shows a password field where the form should be. Don't re-drive the login on every validation case — that is dozens of extra round trips and a lockout risk. Launch once with `storage_state_path: "auth.json"` and start each case already authenticated. Capture procedure: `testing-web-authenticated-sessions`.
 
 ## Default Validation Cases
 
@@ -146,6 +153,8 @@ Conditional:
 - `mcp__webmobai__webmobai_get_accessibility_tree` — for form a11y audit
 - `mcp__webmobai__webmobai_accessibility_audit` — full a11y pass, especially on error states
 - `mcp__webmobai__webmobai_go_back` — reset to form between validation runs
+- `mcp__webmobai__webmobai_describe_selector` — when a field or submit button won't match; see `debugging-web-selectors`
+- `mcp__webmobai__webmobai_save_storage_state` — after a successful login-form happy path, to persist the session for later runs
 
 ## Output
 
@@ -163,8 +172,10 @@ Form test — Signup at https://example.com/signup
     Terms — unchecked:    PASS (blocked client-side)
     Email already used:   PASS (server error shown inline)
   Accessibility on errors: 2 warnings — error messages lack aria-live
-  Report: /tmp/webmobai-report-1715534000.html
+  Report: /var/folders/…/webmobai-1747050000000-a1b2c3/report-1747050099000.html
 ```
+
+The report path is whatever `webmobai_generate_report` returned — `report-<ts>.html` inside that run's `<os.tmpdir()>/webmobai-<ts>-<rand>/` session directory, next to `junit-<ts>.xml`, the screenshots, the recording, and `trace.zip`. Surface it verbatim.
 
 ## Tips & Gotchas
 
@@ -175,14 +186,19 @@ Form test — Signup at https://example.com/signup
 - **Email validation strictness**: HTML5 `type="email"` does only basic checks. Don't penalize a form for accepting `a@b` (technically valid per RFC) — penalize it for accepting clearly invalid input.
 - **Async validation**: some forms validate as you type (debounced). Wait briefly after typing before submitting, or your "invalid" submission may race with the async validator and produce a different error than expected.
 - **Native vs custom errors**: HTML5 `required`/`pattern` produce browser-native error popups. Custom JS validation usually shows inline text. Both are valid; report which the form uses.
-- **Auto-fill / password managers**: with WebMobAI's clean profile, there are no saved credentials. If a form behaves differently with autofill, you won't catch it here.
+- **Auto-fill / password managers**: with WebMobAI's clean profile, there are no saved credentials. If a form behaves differently with autofill, you won't catch it here. Launching with `storage_state_path` restores cookies and localStorage — **not** browser-managed passwords, so autofill still won't fire.
+- **Don't burn a login per validation case.** For a form behind auth, one `storage_state_path` launch covers the whole matrix. Repeated logins are slow and can trip rate limits or account lockout — which then looks like a form bug.
+- **The saved session is a credential.** `webmobai_save_storage_state` writes cookies and localStorage in plaintext (the response prints the path, never the contents). Don't paste the file's contents into your summary, and remind the user it belongs in `.gitignore`.
 - **Hidden honeypot fields**: some forms have anti-spam honeypots (hidden inputs that should stay empty). Don't type into hidden fields with `webmobai_type` — it errors anyway. If the form rejects your submission with no clear reason, check the page state for hidden anti-spam fields.
 - **Submit button state**: many forms disable submit until valid. If your `webmobai_click` on submit silently does nothing, the button may be disabled. Check `webmobai_evaluate` with `document.querySelector('button[type=submit]').disabled`.
 
 ## Example Invocations
 
 User: *"Test the login form at https://example.com/login. Use test@example.com / Password123!"*
-→ Happy path with the given creds. Validation cases on email/password fields. A11y pass on error state.
+→ Happy path with the given creds. Validation cases on email/password fields. A11y pass on error state. Offer to `webmobai_save_storage_state` the successful session so later runs skip the login.
+
+User: *"Test the address form in account settings — it's behind our login."*
+→ Ask for an existing `auth.json`; if there isn't one, capture it via `testing-web-authenticated-sessions`. Launch with `storage_state_path`, navigate straight to the settings URL, then run the normal happy-path + validation matrix.
 
 User: *"Verify checkout works on https://shop.example.com — test product is item 42."*
 → Pre-flight check that you're on staging. Multi-step flow: cart → address → payment → confirm. Screenshot each step. Stop before real payment; report whether you can mock or stub the payment step.

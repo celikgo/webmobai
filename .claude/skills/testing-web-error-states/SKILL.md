@@ -14,7 +14,7 @@ It covers the failure modes an app should survive:
 - **Empty / malformed data** — fulfill with `[]`, `{}`, or truncated JSON to exercise empty-state and parse-error handling.
 - **Aborted requests** — `abort` a request to mimic a connection drop.
 - **Offline** — `set_network_throttle` with the `offline` preset.
-- **Slow network** — `slow-3g` / `fast-3g` to test loading states and timeouts.
+- **Slow network** — `slow-3g` / `fast-3g` / `slow-4g` to test loading states and timeouts.
 - **Blocked third-party** — `abort` an analytics/ads/widget host to check the app doesn't break without it.
 
 This is **fault injection**, not a load or chaos test — it changes one condition at a time and checks the UI response. For the happy-path form flow, use `testing-web-forms`. For raw speed under throttle, use `auditing-web-performance`.
@@ -31,6 +31,7 @@ Use when the user cares about **resilience** — "does the app show an error mes
 2. **The request(s) to intercept** — the API endpoint or third-party host, as a glob pattern (e.g. `**/api/products*`, `**/*.google-analytics.com/**`). If the user doesn't know it, discover it: navigate once normally and use `webmobai_check_errors` / `webmobai_get_page_state`, or ask which action triggers the fetch.
 3. **The failure to simulate** — 500, empty body, abort, offline, slow, or blocked third-party.
 4. **Expected graceful behavior** — what *should* the user see? (an error banner, a retry button, an empty-state message). This is the assertion target. If unstated, ask, or verify the weaker bar: "no blank screen, no uncaught console error."
+5. **Login required?** If the failing endpoint only fires behind a login, don't re-drive the login form each run — capture a session once and launch with it. See `testing-web-authenticated-sessions` (`webmobai_save_storage_state`, then `storage_state_path` on `webmobai_launch_browser`). Never invent credentials.
 
 ## Workflow
 
@@ -50,7 +51,9 @@ Pick the mechanism for the scenario:
 - **Aborted request**: `webmobai_route` with `action: "abort"` (optional `abort_reason` like `"connectionfailed"` / `"timedout"`).
 - **Blocked third-party**: `webmobai_route` on the third-party host glob with `action: "abort"`.
 - **Offline**: `webmobai_set_network_throttle` with `preset: "offline"`.
-- **Slow network**: `webmobai_set_network_throttle` with `preset: "slow-3g"` (or `fast-3g`).
+- **Slow network**: `webmobai_set_network_throttle` with `preset: "slow-3g"` (or `"fast-3g"` / `"slow-4g"`).
+
+`webmobai_route` requires `pattern` and `action`; everything else has a default — `status` 200, `content_type` `application/json`, `body` empty string if omitted, `abort_reason` `"failed"`. `preset` is a **required** property on `webmobai_set_network_throttle`; the four presets are `slow-3g`, `fast-3g`, `slow-4g`, `offline`, and `null` clears.
 
 Combine sparingly — one fault per check keeps the result attributable.
 
@@ -74,13 +77,20 @@ Assert the error UI actually rendered — do **not** just eyeball it:
 ### 8. Report & close
 If multiple scenarios ran, `webmobai_generate_report` with the primary URL. Then `webmobai_close_browser` (also resets all routes and throttling).
 
+### 9. (Optional) Freeze the fault as a replayable scenario
+A verified fault is worth keeping. The scenario format has a `route` step (`{ "type": "route", "pattern", "action", "status", "body", "contentType" }`) that installs the same interception inside a `webmobai-scenario` / `webmobai-suite` run. Hand off to `authoring-web-scenarios` to write it, and `running-web-ci-suites` to wire it into CI.
+
+Two honest limits on the scenario form of this skill:
+- The scenario `route` step has **no** `abortReason` field — `abort_reason` exists only on the MCP tool. A scenario `abort` always uses Playwright's default `"failed"`.
+- There is **no** throttle step in the scenario format. `offline` / `slow-3g` faults are MCP-session-only; a scenario can mock requests but cannot throttle the network.
+
 ## Tools Used
 
 - `mcp__webmobai__webmobai_launch_browser`
 - `mcp__webmobai__webmobai_navigate`
 - `mcp__webmobai__webmobai_route` — arm the fault (`fulfill` 500 / empty / malformed, `abort`, block third-party)
 - `mcp__webmobai__webmobai_unroute` — remove the fault between scenarios
-- `mcp__webmobai__webmobai_set_network_throttle` — `offline` / `slow-3g` / `fast-3g`, `null` to clear
+- `mcp__webmobai__webmobai_set_network_throttle` — `offline` / `slow-3g` / `fast-3g` / `slow-4g`, `null` to clear
 - `mcp__webmobai__webmobai_click` *(conditional — on-demand fetches)*
 - `mcp__webmobai__webmobai_wait_for` *(conditional — observe loading state)*
 - `mcp__webmobai__webmobai_assert_visible`
@@ -88,6 +98,7 @@ If multiple scenarios ran, `webmobai_generate_report` with the primary URL. Then
 - `mcp__webmobai__webmobai_assert_hidden` *(conditional — spinner cleared)*
 - `mcp__webmobai__webmobai_assert_count` *(conditional — empty list)*
 - `mcp__webmobai__webmobai_check_errors`
+- `mcp__webmobai__webmobai_get_console_errors` *(conditional — errors **and** warnings buffered since launch)*
 - `mcp__webmobai__webmobai_get_page_state` *(conditional — discovery)*
 - `mcp__webmobai__webmobai_screenshot`
 - `mcp__webmobai__webmobai_add_test_result`
@@ -108,16 +119,20 @@ ERROR-STATE TEST — https://shop.example.com/products
       → blank region, spinner never cleared, 1 console error     WARNING
   [5] Block third-party (**/*.google-analytics.com/**)
       → page fully functional without analytics                 PASS
-  Report: /path/to/webmobai-report-2026-07-17.html
+  Report: /var/folders/xy/T/webmobai-1753027200000-a1b2c3/report-1753027261234.html
 ```
+
+Artifacts land in the session directory, not a fixed path: `<os.tmpdir()>/webmobai-<ts>-<rand>/` holding `report-<ts>.html`, `screenshots/screenshot-<n>-<ts>.png`, `recordings/`, and `trace.zip`. Surface whatever path the tool returned, verbatim.
 
 ## Tips & Gotchas
 
 - **Route before the request, always.** Playwright can't intercept a request that already left. If nothing was mocked, you armed the route after navigating — reset and redo in order.
 - **Patterns are globs.** `**/api/users/*` matches path segments; use `**/host.com/**` to catch a whole third-party host regardless of path. A too-narrow pattern silently matches nothing and your "500" never fires — verify the fault actually hit via `check_errors`.
+- **`unroute` matches the pattern string exactly.** It removes the tracked handler whose `pattern` is character-for-character the one you passed to `webmobai_route`. `**/api/products*` will not clear a route registered as `**/api/products/*`. When unsure, call `webmobai_unroute` with no `pattern` — that clears every tracked route and reports the count.
 - **Always unroute / clear throttle between scenarios.** A leftover `offline` or a stale `fulfill` will make the *next* scenario lie. Step 7 is not optional. `close_browser` also resets everything as a safety net.
-- **A pretty error banner can still hide a crash.** Run `check_errors` even when the UI looks handled — a caught render path plus an uncaught async rejection is a real bug.
-- **`offline` and throttling are Chromium-only.** On firefox/webkit sessions the throttle is a no-op; use `route` + `abort` to simulate connection loss instead.
+- **A pretty error banner can still hide a crash.** Run `check_errors` even when the UI looks handled — a caught render path plus an uncaught async rejection is a real bug. Note `webmobai_check_errors` filters console output to `type === "error"`; `webmobai_get_console_errors` dumps errors **and** warnings buffered since launch, which is often the better signal under fault injection.
+- **`offline` works everywhere; bandwidth throttling does not.** The `offline` preset uses Playwright's `context.setOffline()` and applies on chromium, firefox, and webkit alike. The `slow-3g` / `fast-3g` / `slow-4g` presets and `webmobai_set_cpu_throttle` go through CDP and are **Chromium-only** — on firefox/webkit they are silently ignored, so a "slow network" test there is really an un-throttled test. Use `route` + `abort` to simulate connection loss on non-Chromium engines.
+- **A failed route install is now a hard failure inside scenarios (v1.4.0).** The scenario runner checks that the route tool returned the `Route active` success prefix and fails the step otherwise. Before 1.4.0 an `Error executing webmobai_route` was swallowed: the mock never installed, later steps quietly hit the real backend, and the run still reported green. In an interactive MCP session there is no such guard — the tool returns `Error executing webmobai_route: …` as ordinary text, so **read the tool's reply** and confirm it says `Route active: <pattern> → <action>` before you trust the next step.
 - **Distinguish `warning` from `fail`.** Console noise under injected failure with a working UI is a `warning`. A blank screen, stale data shown as real, or a hard crash is a `fail`.
 - **Don't mock destructive endpoints on prod** to fake success on a real POST/DELETE — that hides genuine failures. Fault injection is about surfacing bad behavior, not masking it.
 

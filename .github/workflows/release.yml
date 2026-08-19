@@ -13,18 +13,55 @@ jobs:
     name: Publish MCP Server to npm
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      # Required for `npm publish --provenance`: npm exchanges this OIDC token
+      # with Sigstore to attest that the tarball was built from this commit in
+      # this workflow. Without it the publish still works but ships no
+      # provenance, so the "Built and signed on GitHub Actions" badge — the
+      # thing that lets a stranger verify the package came from this repo — is
+      # absent.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+
+      - name: Tag and package version agree
+        working-directory: mcp-server
+        # A tag that does not match package.json publishes a version nobody
+        # asked for, and npm versions are immutable — this is cheaper to catch
+        # here than to explain afterwards.
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG does not match mcp-server/package.json version $PKG"
+            exit 1
+          fi
+          echo "tag and package.json agree on $PKG"
+
       - name: Install and build
         working-directory: mcp-server
         run: npm ci && npm run build
+
+      - name: Verify the published entrypoint actually runs
+        working-directory: mcp-server
+        # The README tells people to run `npx -y webmobai-mcp --help`. That
+        # command used to start the stdio server and block forever, because the
+        # entrypoint had no argv handling. Checking it here means the package
+        # cannot ship in that state again — and the timeout is the assertion:
+        # a regression hangs, so a hang must fail.
+        run: |
+          timeout 30 node dist/index.js --help > /tmp/help.txt
+          grep -q "Usage: webmobai-mcp" /tmp/help.txt
+          timeout 30 node dist/index.js --version
+
       - name: Publish to npm
         working-directory: mcp-server
-        run: npm publish --access public
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -45,6 +82,16 @@ jobs:
           # pulled by Playwright) is a universal binary.
           - platform: macos-latest
             target: x86_64-apple-darwin
+          # ubuntu-22.04 rather than ubuntu-latest, deliberately. The AppImage
+          # and .deb link against the glibc of the machine that built them, so
+          # building on the newest runner would silently raise the minimum
+          # glibc for every Linux user. Building on the older supported image
+          # produces artifacts that also run on the newer one; the reverse is
+          # not true.
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -53,6 +100,22 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        # Tauri v2 links against webkit2gtk 4.1 (v1 used 4.0). These are the
+        # packages a GTK/WebKit build needs and the hosted image does not carry
+        # by default; patchelf is what the AppImage bundler shells out to.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            curl wget file
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -71,6 +134,10 @@ jobs:
         run: npm ci && npm run build
       - name: Slim MCP server to production deps (shipped in app bundle)
         working-directory: mcp-server
+        # shell: bash so this one line is identical on all four runners —
+        # `rm -rf` is not a PowerShell builtin, and the Windows images ship
+        # Git Bash precisely for this.
+        shell: bash
         run: rm -rf node_modules && npm ci --omit=dev
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
