@@ -59,11 +59,115 @@ jobs:
           grep -q "Usage: webmobai-mcp" /tmp/help.txt
           timeout 30 node dist/index.js --version
 
-      - name: Publish to npm
+      - name: npm credentials are valid
         working-directory: mcp-server
-        run: npm publish --provenance --access public
+        # The v1.4.0 release failed on the publish step with
+        #   npm error 404 Not Found - PUT https://registry.npmjs.org/webmobai-mcp
+        # which reads like the package is misnamed. It is not. The registry
+        # answers an unauthenticated — or under-scoped — request to *create* a
+        # package with 404 rather than 401, deliberately, so that a token
+        # cannot be used to probe which names exist. An expired NPM_TOKEN and a
+        # typo in `name` are therefore indistinguishable from the publish log.
+        #
+        # Asking who we are first separates them in one line. This step is the
+        # only place that can say "the credential is dead" out loud, so it runs
+        # before the publish rather than leaving the next person to infer it.
+        run: |
+          if ! WHO="$(npm whoami 2>&1)"; then
+            echo "::error::npm authentication failed: ${WHO}"
+            echo "::error::The NPM_TOKEN secret is missing, expired, or lacks 'Read and write' scope."
+            echo "::error::Mint a Granular Access Token with write access to webmobai-mcp at"
+            echo "::error::https://www.npmjs.com/settings/~/tokens and update the NPM_TOKEN repository secret."
+            exit 1
+          fi
+          echo "authenticated to npm as ${WHO}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        working-directory: mcp-server
+        # npm versions are immutable, so re-running a release that already
+        # published is a guaranteed E403. Re-running a release is ordinary — a
+        # flaky desktop leg, a cancelled run, a retried tag — and it must not
+        # paint the Actions tab red for the crime of having already succeeded.
+        # Checking the registry first makes the step idempotent: publish once,
+        # no-op every time after.
+        run: |
+          PKG="$(node -p "require('./package.json').name")"
+          VER="$(node -p "require('./package.json').version")"
+          if npm view "${PKG}@${VER}" version >/dev/null 2>&1; then
+            echo "${PKG}@${VER} is already on the registry — nothing to publish."
+            exit 0
+          fi
+          npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  verify-npm:
+    name: Published package installs from the registry
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Deliberately no `actions/checkout`. Every other job in this file tests
+    # the working copy; this one tests what a stranger actually receives. A
+    # file that exists on the runner but is missing from the `files` array in
+    # package.json passes the build and fails the reader, and a checkout would
+    # hide exactly that class of bug. Starting from an empty machine is the
+    # assertion.
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Wait for the version to be resolvable
+        # A publish is not instantly visible to every registry replica. Without
+        # this the job would fail on timing rather than on packaging, which is
+        # the same false-red this whole file is trying to stop producing.
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            if npm view "webmobai-mcp@${VER}" version >/dev/null 2>&1; then
+              echo "webmobai-mcp@${VER} is resolvable"
+              exit 0
+            fi
+            echo "attempt ${i}: not on the registry yet, waiting 10s"
+            sleep 10
+          done
+          echo "::error::webmobai-mcp@${VER} never became resolvable after 5 minutes"
+          exit 1
+
+      - name: The MCP path — npx -y webmobai-mcp
+        # This is the invocation in the Claude Desktop and Claude Code config
+        # blocks in the README. It is the most load-bearing command in the
+        # documentation: if it cannot resolve, the AI-native path the project
+        # is built around does not exist for anybody.
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          npx -y "webmobai-mcp@${VER}" --help | tee /tmp/help.txt
+          grep -q "Usage: webmobai-mcp" /tmp/help.txt
+
+      - name: The CLI path — npm install -g, then webmobai-doctor
+        # README Option 2, run verbatim and in order. `playwright` is a
+        # production dependency, so its postinstall fetches the browsers and
+        # the doctor's required chromium check passes without the reader being
+        # told to run anything extra — which is the claim Option 2 makes by
+        # not mentioning one.
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          npm install -g "webmobai-mcp@${VER}"
+          webmobai-doctor
+
+      - name: Every documented binary is on PATH
+        # package.json declares seven `bin` entries and the README names all
+        # seven. A binary that is declared but not shipped only shows up when
+        # somebody types it.
+        run: |
+          for b in webmobai-mcp webmobai-test webmobai-scenario \
+                   webmobai-suite webmobai-codegen webmobai-monitor \
+                   webmobai-doctor; do
+            command -v "$b" >/dev/null || { echo "::error::$b is not on PATH after a global install"; exit 1; }
+            echo "ok: $b -> $(command -v "$b")"
+          done
 
   build-and-release:
     name: Build & Release Desktop App
