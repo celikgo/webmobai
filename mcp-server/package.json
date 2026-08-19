@@ -1,6 +1,6 @@
 {
   "name": "webmobai-mcp",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "mcpName": "io.github.celikgo/webmobai",
   "description": "WebMobAI MCP Server \u2014 Autonomous web QA testing powered by Claude AI + Playwright. Launch a visible browser, explore websites, run accessibility audits, measure performance, and generate test reports.",
   "type": "module",

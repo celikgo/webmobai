@@ -1,7 +1,7 @@
 {
   "name": "webmobai",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "WebMobAI — AI-leveraged end-to-end web testing framework powered by Claude + Playwright",
   "type": "module",
   "scripts": {

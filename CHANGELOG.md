@@ -2,6 +2,27 @@
 
 All notable changes to WebMobAI will be documented in this file.
 
+## [1.4.1] - 2026-08-20
+
+A distribution release. No functional change to the tools, the CLIs, or the desktop app — this
+one exists to make the documented ways of getting WebMobAI actually work.
+
+- **`webmobai-mcp` is on npm.** Both install paths the README teaches — `npm install -g
+  webmobai-mcp` for the CLIs, and `npx -y webmobai-mcp` in the Claude Desktop / Claude Code MCP
+  config — resolve for the first time. The v1.4.0 publish had failed against the registry and the
+  package was never actually available, so every reader following those instructions hit a 404.
+- **Linux and Windows desktop builds.** The release matrix now ships `.AppImage` / `.deb` and
+  `.msi` / `.exe` alongside the macOS `.dmg`. Previous releases were macOS-only despite the Tauri
+  build supporting all three.
+- **The release pipeline reports its own failures honestly.** A bad npm credential used to surface
+  as `404 Not Found - PUT`, which reads as a misnamed package; it is now caught by an explicit
+  `npm whoami` preflight that names the token as the cause. Publishing is idempotent, so re-running
+  a release that already shipped no longer fails on npm's immutable-version rule.
+- **The published package is verified from outside.** A new `verify-npm` job runs on a clean
+  runner with no checkout: it resolves the version from the registry, runs `npx -y webmobai-mcp
+  --help`, does the global install, runs `webmobai-doctor`, and asserts all seven binaries reach
+  PATH. A file missing from `files` in `package.json` now fails CI rather than failing a reader.
+
 ## [1.4.0] - 2026-07-17
 
 Sprint 18 — get past the login wall, plus correctness and packaging hardening from the first full audit.

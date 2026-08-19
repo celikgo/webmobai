@@ -59,7 +59,28 @@ jobs:
           grep -q "Usage: webmobai-mcp" /tmp/help.txt
           timeout 30 node dist/index.js --version
 
+      - name: Is this version already on the registry?
+        id: published
+        working-directory: mcp-server
+        # Asked before anything that needs a credential, because publishing
+        # nothing requires no permission to do it. npm versions are immutable,
+        # so a release can legitimately reach this job with the version already
+        # up — a re-run, a retried tag, or a publish done by hand. Demanding a
+        # valid token in order to then decide there is nothing to do is how a
+        # green release turns red for no reason.
+        run: |
+          PKG="$(node -p "require('./package.json').name")"
+          VER="$(node -p "require('./package.json').version")"
+          if npm view "${PKG}@${VER}" version >/dev/null 2>&1; then
+            echo "${PKG}@${VER} is already published — the publish steps will be skipped."
+            echo "already=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "${PKG}@${VER} is not on the registry — it will be published."
+            echo "already=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: npm credentials are valid
+        if: steps.published.outputs.already == 'false'
         working-directory: mcp-server
         # The v1.4.0 release failed on the publish step with
         #   npm error 404 Not Found - PUT https://registry.npmjs.org/webmobai-mcp
@@ -85,21 +106,9 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
+        if: steps.published.outputs.already == 'false'
         working-directory: mcp-server
-        # npm versions are immutable, so re-running a release that already
-        # published is a guaranteed E403. Re-running a release is ordinary — a
-        # flaky desktop leg, a cancelled run, a retried tag — and it must not
-        # paint the Actions tab red for the crime of having already succeeded.
-        # Checking the registry first makes the step idempotent: publish once,
-        # no-op every time after.
-        run: |
-          PKG="$(node -p "require('./package.json').name")"
-          VER="$(node -p "require('./package.json').version")"
-          if npm view "${PKG}@${VER}" version >/dev/null 2>&1; then
-            echo "${PKG}@${VER} is already on the registry — nothing to publish."
-            exit 0
-          fi
-          npm publish --provenance --access public
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
