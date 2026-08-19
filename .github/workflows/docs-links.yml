@@ -53,9 +53,11 @@ jobs:
           args: >-
             --no-progress
             --verbose
-            --max-retries 3
-            --retry-wait-time 5
+            --max-retries 5
+            --retry-wait-time 10
             --timeout 30
+            --max-concurrency 16
+            --user-agent 'Mozilla/5.0 (compatible; webmobai-docs-links/1.0; +https://github.com/celikgo/webmobai)'
             --accept 200,206,301,302,308
             --remap 'https://github.com/celikgo/webmobai/blob/main/(.*) file://${{ github.workspace }}/$1'
             --exclude '^https?://([a-z0-9-]+\.)*example\.(com|org|net)([/:?#]|$)'
@@ -109,6 +111,32 @@ jobs:
 #    about the link. The package's existence is verified directly against
 #    `registry.npmjs.org` by the `readme-claims` job in ci.yml, which is a real
 #    check rather than a scrape of the marketing site.
+#
+# ---------------------------------------------------------------------------
+# On flakiness
+# ---------------------------------------------------------------------------
+#
+# The first green run of this job was preceded by a red one whose only error
+# was `[ERROR] https://tauri.app/ | Connection failed` — a link that is
+# demonstrably fine. Re-running it passed with nothing changed.
+#
+# That matters more than it looks. A gate that fails for reasons unrelated to
+# the thing it guards trains everyone to re-run it without reading it, and a
+# check nobody reads is worse than no check: it costs time and buys nothing.
+# So the settings below buy reliability without buying leniency —
+#
+#   --max-concurrency 16   lychee defaults to 128 in-flight requests. Firing
+#                          that many at a couple of dozen hosts is what
+#                          produces connection resets and rate-limit refusals
+#                          that look exactly like dead links. There are ~250
+#                          links here; 16 at a time still finishes in seconds.
+#   --max-retries 5        transient failures are retried harder before the
+#   --retry-wait-time 10   job is willing to call a link dead.
+#   --user-agent           some CDNs refuse unknown agents outright. Sending a
+#                          real, identifiable one gets an honest answer.
+#
+# None of this makes a 404 pass. A dead link still fails the build, which is
+# the whole point.
 #
 # ---------------------------------------------------------------------------
 # The one remap, and why
