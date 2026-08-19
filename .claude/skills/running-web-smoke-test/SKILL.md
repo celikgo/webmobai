@@ -153,13 +153,13 @@ Screenshot paths are whatever `webmobai_screenshot` returned — a `screenshots/
 User: *"Quick smoke test on https://staging.example.com — we just deployed."*
 → Run the standard flow, no expected-content assertion. Report PASS/FAIL with the screenshot.
 
-User: *"Is https://shop.foo.com still working? Make sure the 'Add to Cart' button shows up."*
+User: *"Is https://shop.example.com still working? Make sure the 'Add to Cart' button shows up."*
 → Same flow, but include a `webmobai_wait_for` on a selector that should match the Add to Cart button (or `evaluate` checking innerText). Report whether the assertion held.
 
-User: *"Sanity check the new release on https://app.bar.com/login."*
+User: *"Sanity check the new release on https://app.example.org/login."*
 → Smoke-test the login page only. Note in the output that the test stops at the login wall — it did not log in.
 
-User: *"Smoke test the dashboard at https://app.bar.com/home — we have auth.json from last week."*
+User: *"Smoke test the dashboard at https://app.example.org/home — we have auth.json from last week."*
 → Launch with `storage_state_path: "auth.json"`, then run the normal flow. If the final URL is `/login`, the session expired: say so and point at `testing-web-authenticated-sessions` to re-capture — don't report it as a site outage.
 
 User: *"The smoke test won't even start — it errors on launch."*

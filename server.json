@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.celikgo/webmobai",
+  "description": "Autonomous web QA over MCP: drives real Chromium/Firefox/WebKit through 51 tools — navigation, assertions, request mocking, authenticated sessions, self-healing selectors, and accessibility, performance, SEO, security and PWA audits.",
+  "repository": {
+    "url": "https://github.com/celikgo/webmobai",
+    "source": "github"
+  },
+  "version": "1.4.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "webmobai-mcp",
+      "version": "1.4.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "WEBMOBAI_ANTHROPIC_API_KEY",
+          "description": "Optional. Enables the AI-backed tools: executive audit summaries, visual-diff narration, and natural-language to scenario generation. Every other tool works without it.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

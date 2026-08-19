@@ -234,7 +234,7 @@ If the scenario runs authenticated, the run line is `webmobai-scenario ./scenari
 User: *"I just walked through the checkout on staging — turn that into a test I can run in CI."*
 → Ensure the browser is on the checkout page, use `webmobai_generate_scenario` to scaffold, tighten selectors/assertions, hand back JSON + `webmobai-scenario` command.
 
-User: *"Write a test for the login form on https://app.foo.com/login that submits a bad password and checks the error shows."*
+User: *"Write a test for the login form on https://app.example.com/login that submits a bad password and checks the error shows."*
 → Navigate there, call `webmobai_generate_scenario_from_prompt` with that description, review the validated JSON, deliver it. If no API key, say so and scaffold + edit instead.
 
 User: *"Save this contact-form flow as a reusable scenario."*

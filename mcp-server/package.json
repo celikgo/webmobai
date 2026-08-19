@@ -1,7 +1,8 @@
 {
   "name": "webmobai-mcp",
   "version": "1.4.0",
-  "description": "WebMobAI MCP Server — Autonomous web QA testing powered by Claude AI + Playwright. Launch a visible browser, explore websites, run accessibility audits, measure performance, and generate test reports.",
+  "mcpName": "io.github.celikgo/webmobai",
+  "description": "WebMobAI MCP Server \u2014 Autonomous web QA testing powered by Claude AI + Playwright. Launch a visible browser, explore websites, run accessibility audits, measure performance, and generate test reports.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -20,6 +21,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "eval": "node evals/selector-recovery/run.mjs --min-rate 80",
+    "eval:report": "node evals/selector-recovery/run.mjs --min-rate 80 --json ../eval-results.json --markdown ../eval-table.md",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

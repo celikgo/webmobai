@@ -122,10 +122,10 @@ If the audit finds nothing, say so plainly and still include the caveat — a cl
 User: *"Run a security audit on https://app.example.com — check the CSP and cookie flags."*
 → Launch, navigate, `webmobai_security_audit`, report grouped high/medium/low with the hygiene caveat.
 
-User: *"Is https://shop.foo.com secure? Are the session cookies HttpOnly?"*
+User: *"Is https://shop.example.com secure? Are the session cookies HttpOnly?"*
 → Audit the page; session cookies only exist after login, so drive to the logged-in state first (or launch from a saved `storage_state_path` — see `testing-web-authenticated-sessions`), then audit. Report the cookie-flag findings by name — never values — check the `domain=` before attributing a cookie to their app, and clarify this is hygiene, not a full security assessment.
 
-User: *"Check https://staging.bar.com for mixed content and security headers."*
+User: *"Check https://staging.example.org for mixed content and security headers."*
 → Run the audit, focus the summary on `mixed-content` and `csp-*` findings, and note that mixed-content detection is best-effort (network-error-derived), so a clean result isn't proof.
 
 User: *"Do a full security pentest of my site."*

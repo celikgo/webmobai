@@ -11,6 +11,8 @@ WebMobAI gives you four ways to test the same browser engine:
 
 The distinctive feature is **self-healing selectors**: when a `[data-testid=submit]` stops matching (because someone renamed the testid), the tool response includes the prior element fingerprint, ranked candidate replacements, and the page-state triage — so an AI client retries with a smarter selector instead of failing the test.
 
+That is a deliberate design choice rather than a feature, and it is measured, not asserted: on a corpus of 18 real-world selector breakages the top-ranked suggestion recovers **86.7%** of broken selectors on the first retry (93.3% within the top three), and the eval runs in CI on every push. [**docs/DESIGNED_FOR_AGENTS.md**](./docs/DESIGNED_FOR_AGENTS.md) explains the principle, shows a real failure-and-retry transcript, and is candid about the three cases it still gets wrong.
+
 ---
 
 ## Documentation
@@ -22,6 +24,8 @@ The distinctive feature is **self-healing selectors**: when a `[data-testid=subm
 | [docs/SCENARIO_FORMAT.md](./docs/SCENARIO_FORMAT.md) | You are hand-writing or reviewing a scenario / suite JSON and need the canonical field list and step verbs. |
 | [docs/AUTHENTICATION.md](./docs/AUTHENTICATION.md) | The thing you want to test sits behind a login — capturing, replaying, and rotating a `storageState` session. |
 | [docs/CI.md](./docs/CI.md) | You are wiring WebMobAI into GitHub Actions / GitLab CI — sharding, workers, JUnit, artifacts, exit codes. |
+| [docs/DESIGNED_FOR_AGENTS.md](./docs/DESIGNED_FOR_AGENTS.md) | You want the design principle behind the tool responses — what a selector miss returns, why a ranked candidate list lets a model recover on its own, and the measured recovery rate. |
+| [SECURITY.md](./SECURITY.md) | You are testing behind a login and need to know how `storageState` session files are stored, why they must never be committed, and the vulnerability disclosure path. |
 | [FEATURES.md](./FEATURES.md) | You want the capability inventory, what is deliberately out of scope, and the sprint-by-sprint history. |
 | [ROADMAP.md](./ROADMAP.md) | You want to know what is planned next and what was already delivered. |
 | [CHANGELOG.md](./CHANGELOG.md) | You are upgrading and need to know exactly what changed in a release. |
@@ -67,7 +71,7 @@ The distinctive feature is **self-healing selectors**: when a `[data-testid=subm
 | **Preflight environment check** (Sprint 18) | `webmobai-doctor [--storage-state auth.json]` |
 | **20 Claude Code skills** — packaged testing workflows | [`.claude/skills/`](./.claude/skills/README.md) |
 
-**51 MCP tools** across 16 tool files, **7 binaries**, **214 tests** in 26 files, **20 Claude Code skills**. CI installs Chromium + Firefox + WebKit and runs the full suite on every push.
+**51 MCP tools** across 16 tool files, **7 binaries**, **219 tests** in 27 files, **20 Claude Code skills**. CI installs Chromium + Firefox + WebKit and runs the full suite on every push.
 
 ---
 
@@ -241,7 +245,7 @@ Each skill is a `SKILL.md` describing when to use it, which of the 51 MCP tools 
 |---|---|
 | Desktop app | [Tauri 2.0](https://tauri.app) (Rust + WebView) |
 | Frontend | React 19, TypeScript, Tailwind CSS v4, Zustand |
-| MCP server | [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk) |
+| MCP server | [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk) |
 | Browser engine | [Playwright](https://playwright.dev) (Chromium / Firefox / WebKit) |
 | A11y engine | [axe-core](https://github.com/dequelabs/axe-core) via `@axe-core/playwright` |
 | Pixel diff | [pixelmatch](https://github.com/mapbox/pixelmatch) + [pngjs](https://github.com/lukeapage/pngjs) |
@@ -277,7 +281,7 @@ webmobai/
 │   │   ├── perf/                   lighthouse.ts (optional dependency)
 │   │   └── utils/                  report-generator, junit-generator, run-history,
 │   │                               failure-triage, ensure-browsers, logger
-│   └── test/                       214 tests across 26 files
+│   └── test/                       219 tests across 27 files
 └── ...
 ```
 

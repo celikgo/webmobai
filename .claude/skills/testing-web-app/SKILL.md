@@ -197,7 +197,7 @@ Status meanings (already enforced by the tool's enum):
 User: *"Test https://example.com and give me a full report."*
 → Run the full workflow, default scope (5 pages, default breakpoints), produce the HTML report, summarize the top issues.
 
-User: *"Audit my landing page at https://launch.foo.com — I care most about mobile and a11y."*
+User: *"Audit my landing page at https://launch.example.com — I care most about mobile and a11y."*
 → Same workflow, but extend the breakpoint list to include extra small (iPhone SE 320×568) and tag a11y issues with extra detail in the per-issue test result. Consider also chaining into `auditing-web-accessibility` for a deeper second pass.
 
 User: *"Run a full QA on https://shop.example.com headless, top 10 pages."*

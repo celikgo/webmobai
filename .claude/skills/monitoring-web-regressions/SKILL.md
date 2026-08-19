@@ -38,7 +38,7 @@ Use this when the target has **already been tested at least twice** and the ques
 
 ## Inputs You Need
 
-1. **URL** (required for regression check). History is keyed by exact URL string — `https://x.com` and `https://x.com/` are different keys. Confirm the exact form the user tests with.
+1. **URL** (required for regression check). History is keyed by exact URL string — `https://example.com` and `https://example.com/` are different keys. Confirm the exact form the user tests with.
 2. **Baseline size** (optional). How many prior runs form the median. `baseline_runs` default 5.
 3. **Sensitivity** (optional). Per-metric deviation threshold in percent. `threshold_pct` default 10. Lower = more sensitive, more false positives.
 4. **For continuous monitoring**: an interval (`30s`, `5m`, `1h`) and, optionally, an alert webhook URL to POST regression bundles to. Both tuning knobs above are **MCP-tool-only** — the monitor binary always alerts on its own hardcoded defaults (see step 5).
@@ -166,7 +166,7 @@ the LCP element and the request waterfall.
 
 - **History is per-machine and unshared.** `~/.webmobai/history.json` is local to whatever machine ran the tests, and the path is not configurable — no env var, no flag. CI runs and your laptop keep separate histories; a regression check only sees runs recorded on the *same* machine. There is no shared or remote history store.
 - **The 200-entry cap is global, not per URL.** Appending past 200 drops the oldest entries regardless of which URL they belong to. Monitoring five URLs at a 5-minute interval burns the whole file in under three and a half hours, and the long-tail baseline for each of them disappears with it. Widen the interval or monitor fewer URLs.
-- **Exact-URL keyed.** Trailing slashes, query strings, and `www.` all fork the history. `webmobai-test` stores the URL **exactly as it was passed on the command line** — not the post-redirect final URL — so `http://x.com` and `https://x.com/` stay two separate history keys even when a redirect makes them the same page, and re-running with a slightly different spelling silently starts a second key. If a check says "not enough history" but the user swears they've tested it, run `webmobai_get_run_history` with **no** `url` filter and read the exact strings back.
+- **Exact-URL keyed.** Trailing slashes, query strings, and `www.` all fork the history. `webmobai-test` stores the URL **exactly as it was passed on the command line** — not the post-redirect final URL — so `http://example.com` and `https://example.com/` stay two separate history keys even when a redirect makes them the same page, and re-running with a slightly different spelling silently starts a second key. If a check says "not enough history" but the user swears they've tested it, run `webmobai_get_run_history` with **no** `url` filter and read the exact strings back.
 - **Median, not last-run.** The baseline is the *median* of up to N prior runs, so a single noisy run won't trip a false regression — and won't mask a real one. But see step 2: 2 total runs compares nothing, 3 is the real floor, 6+ gives a full 5-run baseline.
 - **A zero baseline is a special case.** When the median of the priors is 0 and the current value isn't — the usual shape of "the first console error appeared" — the finding is a `regression` with `deltaPct: null` and the message `<metric>: regression — baseline was 0, current is <n>`. There's no percentage to quote; report it as "new, previously zero."
 - **This skill doesn't measure — it reads.** If there's no history, there's nothing to compare. Seed it with a `testing-web-app` run (or `webmobai-monitor --once`) first. Scenario and suite runs do **not** write history.
@@ -182,11 +182,11 @@ User: *"Has https://example.com regressed since we last tested it?"*
 User: *"Show me the run history for my staging site and tell me if perf is trending down."*
 → `webmobai_get_run_history` for that URL, describe the LCP/CLS/FCP trajectory across the entries. If it's slipping, follow with `webmobai_check_regressions` to quantify against the median.
 
-User: *"Monitor https://shop.foo.com every 10 minutes and ping our Slack webhook if it regresses."*
-→ Hand them `webmobai-monitor https://shop.foo.com --interval=10m --alert-webhook=<slack-url>`. Note that it runs headed in the foreground (needs a display; use a supervisor for 24-7), that alerts fire at a fixed ±10% vs a 5-run median with no way to tune it, and that Slack will not accept the raw bundle — the POST body is the `{url, latestRunId, timestamp, baselineRuns, regressions[]}` JSON above, so they need a receiver that reshapes it into Slack's payload format.
+User: *"Monitor https://shop.example.com every 10 minutes and ping our Slack webhook if it regresses."*
+→ Hand them `webmobai-monitor https://shop.example.com --interval=10m --alert-webhook=<slack-url>`. Note that it runs headed in the foreground (needs a display; use a supervisor for 24-7), that alerts fire at a fixed ±10% vs a 5-run median with no way to tune it, and that Slack will not accept the raw bundle — the POST body is the `{url, latestRunId, timestamp, baselineRuns, regressions[]}` JSON above, so they need a receiver that reshapes it into Slack's payload format.
 
 User: *"Did LCP get worse after today's deploy? Be strict about it."*
 → `webmobai_check_regressions` with `threshold_pct: 5` for higher sensitivity. Report the LCP finding specifically and caveat that a tighter threshold means more false positives on a noisy metric.
 
-User: *"Monitor our logged-in dashboard at https://app.foo.com/dashboard every 15 minutes."*
+User: *"Monitor our logged-in dashboard at https://app.example.com/dashboard every 15 minutes."*
 → Don't agree to it as stated. `webmobai-monitor` spawns `webmobai-test`, which has no storageState support, and no saved session survives an open-ended interval unrefreshed — the loop would quietly start trending `/login`. Offer the two things that do work: monitor a public URL on the schedule, and gate the authenticated surface per deploy with an authenticated suite (`running-web-ci-suites` + `testing-web-authenticated-sessions`). If they insist on the loop, the only lever is the legacy `credentials` config JSON, with its landing-page-only heuristic and its credentials-in-argv exposure spelled out.

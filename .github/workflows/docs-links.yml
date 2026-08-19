@@ -1,0 +1,115 @@
+# Every URL in every Markdown file resolves.
+#
+# This workflow exists because two of the four documented install paths in the
+# README once 404'd, and nothing in CI noticed. A command or a link that does
+# not work is indistinguishable, to a reader, from one that was never checked.
+# The class of defect is now a build failure rather than a discovery.
+name: docs-links
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Link rot is caused by the outside world, not by our commits, so a repo
+    # that is not being pushed to still needs checking. Monday 06:17 UTC — an
+    # odd minute to stay off the top-of-hour scheduling spike.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: docs-links-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: every URL in the docs resolves
+    # ubuntu-latest only, and not by preference: lychee-action's action.yml
+    # hardcodes an x86_64-unknown-linux-gnu release tarball, so it cannot run
+    # on the macOS or Windows runners. A URL resolves or does not resolve
+    # independently of the machine asking, so one platform is also the right
+    # amount.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        env:
+          # Unauthenticated requests to github.com get rate-limited into 429s,
+          # which are indistinguishable from dead links. The token makes the
+          # GitHub links a real check rather than a coin flip.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Stated rather than left to the default: the entire point of this
+          # job is that a dead link stops the build. A future change to the
+          # action's default must not quietly turn this into a report nobody
+          # reads.
+          fail: true
+          args: >-
+            --no-progress
+            --verbose
+            --max-retries 3
+            --retry-wait-time 5
+            --timeout 30
+            --accept 200,206,301,302,308
+            --exclude '^https?://([a-z0-9-]+\.)*example\.(com|org|net)([/:?#]|$)'
+            --exclude '^https?://([a-z0-9-]+\.)*[a-z0-9-]+\.(test|invalid|localhost)([/:?#]|$)'
+            --exclude '^https?://(localhost|127\.0\.0\.1|\[::1\])([/:?#]|$)'
+            --exclude '^https?://([a-z0-9-]+\.)*local([/:?#]|$)'
+            --exclude '^https?://(www\.)?npmjs\.com/'
+            './**/*.md'
+
+# ---------------------------------------------------------------------------
+# The exclusions, and why each one is here
+# ---------------------------------------------------------------------------
+#
+# Every exclusion below is a URL that *cannot* resolve by design, or one whose
+# non-200 carries no information. Nothing is excluded merely because it was
+# inconvenient: if a link in this repository is meant to be followed and is
+# unreachable, this job is meant to say so.
+#
+# 1. `example.com` / `example.org` / `example.net`
+#
+#    RFC 2606 §3 reserves these second-level names specifically so that
+#    documentation can use them and no one can register them. They are the
+#    correct placeholder, and they are correct precisely *because* they lead
+#    nowhere. Every illustrative URL in the docs and in the .claude/skills
+#    prompts uses one of these — `app.example.com`, `shop.example.org`, and so
+#    on. Where two distinct tenants need to be shown, the docs use
+#    `example.com` and `example.org` rather than inventing a domain someone
+#    else owns.
+#
+# 2. `.test`, `.invalid`, `.localhost`
+#
+#    RFC 6761 reserves these TLDs for the same reason. `.invalid` in
+#    particular is guaranteed by the RFC never to resolve.
+#
+# 3. `localhost`, `127.0.0.1`, `[::1]`
+#
+#    Loopback. The PWA skill documents that WebMobAI's HTTPS gate treats
+#    `http://localhost` as exempt and flags `http://127.0.0.1:3000` — those
+#    strings are describing the tool's own behaviour, not offering a link.
+#    A hosted runner's loopback is not the reader's loopback.
+#
+# 4. `*.local`
+#
+#    RFC 6762 reserves `.local` for multicast DNS. `http://dev.local` appears
+#    in the PWA skill for the same behavioural reason as the loopback case.
+#
+# 5. `npmjs.com`
+#
+#    The npm website answers non-browser user agents with a 403 from its edge
+#    regardless of whether the package exists — a 403 here tells you nothing
+#    about the link. The package's existence is verified directly against
+#    `registry.npmjs.org` by the `readme-claims` job in ci.yml, which is a real
+#    check rather than a scrape of the marketing site.
+#
+# Note on the regex-shaped strings under example.com: SCENARIO_FORMAT.md
+# documents `assert_url` patterns such as `https://app\.example\.com/u/\d+$`.
+# Those are regular expressions that happen to be spelled like URLs, not links.
+# They fall under exclusion 1 and are correctly never fetched.

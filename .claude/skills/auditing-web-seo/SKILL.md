@@ -117,10 +117,10 @@ BROKEN LINKS — checked 34/41 same-origin links (41 = all http(s) links; 34 sam
 User: *"Run an SEO audit on https://example.com/blog/launch."*
 → Launch, navigate, `seo_audit`, `check_broken_links`, report grouped findings. No HTML report unless asked.
 
-User: *"Are there any broken links on my docs homepage? https://docs.foo.com"*
+User: *"Are there any broken links on my docs homepage? https://docs.example.com"*
 → Focus on `check_broken_links` (still run `seo_audit` for context). Note it's same-origin and capped at 50 unless they raise `max_links`.
 
-User: *"Check my Open Graph and meta tags for https://shop.bar.com."*
+User: *"Check my Open Graph and meta tags for https://shop.example.org."*
 → `seo_audit` is the star; call out the OG/Twitter/canonical/description findings specifically, and state that only `og:title`, `og:image`, and `twitter:card` produce findings — silence on `og:description` or `og:url` means "not checked," not "present."
 
 User: *"Is my SEO ok, and do I have missing alt text?"*

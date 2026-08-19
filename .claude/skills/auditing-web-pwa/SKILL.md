@@ -122,7 +122,7 @@ User: *"Is https://app.example.com installable as a PWA?"*
 User: *"Check the service worker and manifest on our web app, and see if it works offline."*
 → Same flow but pass `test_offline: true` so the audit adds the offline-fallback check; call out the offline result explicitly.
 
-User: *"Why won't Chrome show the 'Add to Home Screen' prompt on https://shop.foo.com?"*
+User: *"Why won't Chrome show the 'Add to Home Screen' prompt on https://shop.example.com?"*
 → Run the audit and translate the blocking findings — most often a missing/incomplete manifest, a missing ≥192×192 icon, no registered service worker, or non-HTTPS.
 
 User: *"Full PWA readiness report for staging."*

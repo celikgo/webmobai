@@ -21,6 +21,8 @@ question it answers.
 | [`ROADMAP.md`](../ROADMAP.md) | You want to know what is planned next and what already shipped. |
 | [`CHANGELOG.md`](../CHANGELOG.md) | You are upgrading and need the exact per-release delta. |
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | You are changing the code — dev setup, adding an MCP tool, adding a scenario step verb, adding a skill, the release checklist. |
+| [`SECURITY.md`](../SECURITY.md) | You are testing behind a login, or you found a vulnerability — how `storageState` session files are stored, why they must never be committed, and the disclosure path. |
+| [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | You are participating in the project's community spaces. |
 | [`LICENSE`](../LICENSE) | Licensing. |
 
 ### `docs/` — the deep references
@@ -30,6 +32,9 @@ question it answers.
 | [`SCENARIO_FORMAT.md`](SCENARIO_FORMAT.md) | You are hand-writing or reviewing a scenario / suite JSON — the canonical field list, every step verb, the suite wrapper, exit codes. |
 | [`AUTHENTICATION.md`](AUTHENTICATION.md) | The thing you want to test sits behind a login — capturing, replaying, validating, and rotating a Playwright `storageState` session. |
 | [`CI.md`](CI.md) | You are wiring WebMobAI into GitHub Actions / GitLab CI — which binary to gate on, exit codes, `--workers`, `--shard`, tags, JUnit, artifacts. |
+| [`DESIGNED_FOR_AGENTS.md`](DESIGNED_FOR_AGENTS.md) | You want the design principle behind the tool responses — what a selector miss returns, why a ranked candidate list plus page-state triage lets a model recover on its own, the measured recovery rate, and the cases it still gets wrong. |
+| [`MCP_DIRECTORY_SUBMISSIONS.md`](MCP_DIRECTORY_SUBMISSIONS.md) | You are listing WebMobAI in the MCP registries and awesome-lists — which ones are worth it, each one's bar, and the prepared submission for each. |
+| [`assets/README.md`](assets/README.md) | You are regenerating or installing the repository's social preview image. |
 | `README.md` | This page. |
 
 ### Package- and agent-level

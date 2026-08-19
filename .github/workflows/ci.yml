@@ -29,7 +29,54 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run tests
         working-directory: mcp-server
-        run: npm test
+        # Two reporters: the default one so the log is readable, and the JSON
+        # one so the doc-claims check can reuse this run's test total instead
+        # of paying for a second full suite (which would mean a second
+        # three-browser install).
+        run: >-
+          npx vitest run
+          --reporter=default
+          --reporter=json
+          --outputFile.json=${{ runner.temp }}/vitest-report.json
+
+      - name: Selector-recovery eval
+        working-directory: mcp-server
+        # docs/DESIGNED_FOR_AGENTS.md publishes a recovery rate. This is the
+        # measurement behind that number, so it has to run on every push or
+        # the number becomes a claim again. It runs against dist/ — the build
+        # step above — because that is what ships.
+        #
+        # The floor is a regression gate rather than the target: the measured
+        # overall rate is 83.3%, and a drop below 80% means the ranking got
+        # worse, not that the corpus got unlucky.
+        #
+        # eval:report rather than eval — it writes the JSON and the Markdown
+        # table that the upload step below publishes as a build artifact.
+        run: npm run eval:report
+
+      - name: Documentation claims match the tree
+        # The README advertises "51 MCP tools", "7 binaries", "219 tests", and
+        # — since the eval landed — a published selector-recovery rate. Numbers
+        # written in prose drift silently: nothing breaks when a tool is added.
+        # This recounts every one of them and fails on any disagreement, so the
+        # claims stay true by construction rather than by diligence.
+        #
+        # Runs after the eval so that eval-results.json exists; without
+        # --eval-json the recovery-rate claims are skipped with a warning.
+        run: >-
+          node scripts/check-doc-claims.mjs
+          --vitest-json ${{ runner.temp }}/vitest-report.json
+          --eval-json eval-results.json
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: selector-recovery-eval
+          path: |
+            eval-results.json
+            eval-table.md
+          if-no-files-found: ignore
 
   check-frontend:
     name: Frontend (React + TypeScript)

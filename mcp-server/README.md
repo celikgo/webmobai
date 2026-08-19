@@ -236,7 +236,7 @@ Full walkthrough: [docs/AUTHENTICATION.md](https://github.com/celikgo/webmobai/b
 ## Example prompts
 
 ```
-"Thoroughly test https://mysite.com — exercise navigation, forms, accessibility,
+"Thoroughly test https://example.com — exercise navigation, forms, accessibility,
 performance, and security. Generate a report when done."
 
 "Run the login flow at https://app.example.com with test@test.com / demo123.
