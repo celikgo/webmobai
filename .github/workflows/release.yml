@@ -93,12 +93,32 @@ jobs:
         # Asking who we are first separates them in one line. This step is the
         # only place that can say "the credential is dead" out loud, so it runs
         # before the publish rather than leaving the next person to infer it.
+        #
+        # It must not become a new way to fail, though. Under trusted
+        # publishing there is no token at all: the npm CLI exchanges the
+        # Actions OIDC token for a short-lived credential at publish time, so
+        # `npm whoami` has nothing to answer with and fails for a repository
+        # that is correctly configured. Gating the check on NPM_TOKEN being
+        # set keeps it a diagnostic for the token path without making it a
+        # prerequisite for the tokenless one.
+        #
+        # https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/
         run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "No NPM_TOKEN is set — this job expects trusted publishing (OIDC)."
+            echo "There is no long-lived credential to pre-flight: npm exchanges the Actions"
+            echo "OIDC token for a short-lived one during publish, and attests provenance"
+            echo "automatically. Nothing to check here."
+            exit 0
+          fi
           if ! WHO="$(npm whoami 2>&1)"; then
             echo "::error::npm authentication failed: ${WHO}"
-            echo "::error::The NPM_TOKEN secret is missing, expired, or lacks 'Read and write' scope."
-            echo "::error::Mint a Granular Access Token with write access to webmobai-mcp at"
-            echo "::error::https://www.npmjs.com/settings/~/tokens and update the NPM_TOKEN repository secret."
+            echo "::error::NPM_TOKEN is set but the registry will not accept it — expired, revoked,"
+            echo "::error::or lacking write access to webmobai-mcp."
+            echo "::error::Prefer trusted publishing over replacing it: configure a GitHub Actions"
+            echo "::error::trusted publisher for this package on npmjs.com (repo celikgo/webmobai,"
+            echo "::error::workflow file release.yml), then delete the NPM_TOKEN secret entirely."
+            echo "::error::npm is withdrawing direct publish from 2FA-bypass tokens in January 2027."
             exit 1
           fi
           echo "authenticated to npm as ${WHO}"
