@@ -1,6 +1,6 @@
 # WebMobAI Skills
 
-This directory contains project-scoped Claude Code skills for **WebMobAI v1.4.0** — the AI-leveraged end-to-end web testing framework. It ships as three surfaces over one Playwright core:
+This directory contains project-scoped Claude Code skills for **WebMobAI v1.4.1** — the AI-leveraged end-to-end web testing framework. It ships as three surfaces over one Playwright core:
 
 - a **Tauri desktop app** (`src/`, `src-tauri/`) for watch-it-run sessions, reports, and the Monitors tab;
 - an **MCP server** exposing **51 Playwright-driven web testing tools** to Claude;
@@ -213,7 +213,7 @@ Note for CI: JUnit maps `warning` to `<skipped/>`, **not** to a failure — warn
 
 ## Underlying Tool Reference
 
-All skills are thin orchestrations over the WebMobAI MCP tools. The server advertises version `1.4.0` and exposes **51 tools** — the full canonical list, grouped. Counts sum to 51 (7+1+5+2+5+5+2+2+4+5+3+3+2+2+2+1).
+All skills are thin orchestrations over the WebMobAI MCP tools. The server advertises version `1.4.1` and exposes **51 tools** — the full canonical list, grouped. Counts sum to 51 (7+1+5+2+5+5+2+2+4+5+3+3+2+2+2+1).
 
 | Category | Count | Tools (all carry the `webmobai_` prefix) |
 |---|---|---|

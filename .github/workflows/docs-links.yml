@@ -108,9 +108,22 @@ jobs:
 #
 #    The npm website answers non-browser user agents with a 403 from its edge
 #    regardless of whether the package exists — a 403 here tells you nothing
-#    about the link. The package's existence is verified directly against
-#    `registry.npmjs.org` by the `readme-claims` job in ci.yml, which is a real
-#    check rather than a scrape of the marketing site.
+#    about the link.
+#
+#    This exclusion is only defensible if something else checks the package for
+#    real, and for a while nothing did: this comment previously credited a
+#    `readme-claims` job in ci.yml that does not exist under that name and
+#    never touched the registry. The job that does exist — "Documentation
+#    claims match the tree" — recounts tools, binaries and tests against the
+#    source, which is a different guarantee entirely.
+#
+#    The real check now lives in release.yml as the `verify-npm` job: on a
+#    clean runner with no checkout it resolves the just-published version,
+#    runs `npx -y webmobai-mcp --help`, does the global install, runs
+#    `webmobai-doctor`, and asserts all seven binaries land on PATH. That
+#    exercises registry.npmjs.org itself rather than scraping the marketing
+#    site, and it tests the install paths the README teaches instead of merely
+#    testing that a link is blue.
 #
 # ---------------------------------------------------------------------------
 # On flakiness
